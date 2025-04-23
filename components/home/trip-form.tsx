@@ -82,43 +82,69 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
   const [validationMessage, setValidationMessage] = useState("");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [loadingState, setLoadingState] = useState<
+    "idle" | "validating" | "submitting" | "processing"
+  >("idle");
+  const [networkError, setNetworkError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   // Validate input based on question type
-  const validateInput = useCallback(async (input: string): Promise<boolean> => {
-    setValidationMessage("");
+  const validateInput = useCallback(
+    async (input: string): Promise<boolean> => {
+      setValidationMessage("");
+      setNetworkError(null);
+      setLoadingState("validating");
 
-    try {
-      const response = await fetch("/api/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          questionIndex: currentQuestion,
-          answer: input,
-        }),
-      });
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-      if (!response.ok) {
-        throw new Error("Validation request failed");
+        const response = await fetch("/api/validate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            questionIndex: currentQuestion,
+            answer: input,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "Unknown error");
+          throw new Error(`Validation request failed: ${errorText}`);
+        }
+
+        const { valid, message } = await response.json();
+
+        if (!valid) {
+          setValidationMessage(message);
+          setLoadingState("idle");
+          return false;
+        }
+
+        setLoadingState("idle");
+        return true;
+      } catch (error) {
+        console.error("Error validating input:", error);
+        if (error instanceof Error && error.name === "AbortError") {
+          setNetworkError("Validation request timed out. Please try again.");
+        } else {
+          // For other errors, we'll continue but show a warning
+          setNetworkError("Network issue with validation. Proceeding anyway.");
+          toast.warning("Could not validate input, but you can continue.");
+        }
+        setLoadingState("idle");
+        return true; // Allow to continue on error
       }
-
-      const { valid, message } = await response.json();
-
-      if (!valid) {
-        setValidationMessage(message);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error validating input:", error);
-      return true; // Allow to continue on error
-    }
-  }, [currentQuestion]);
-
+    },
+    [currentQuestion]
+  );
 
   // Handle form submission for each question
   const handleSubmit = useCallback(
@@ -133,25 +159,54 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
 
       // Validate input
       setIsTyping(true);
+      setIsValidating(true);
+      setLoadingState("submitting");
       const isValid = await validateInput(currentInput);
+      setIsValidating(false);
       setIsTyping(false);
 
-      if (!isValid) return;
+      if (!isValid) {
+        setLoadingState("idle");
+        return;
+      }
 
-      // Save answer
-      setAnswer(currentQuestion, currentInput);
+      try {
+        // Show different loading message based on current question
+        if (currentQuestion < QUESTIONS.length - 1) {
+          // Save answer and move to next question
+          setAnswer(currentQuestion, currentInput);
+          setCurrentQuestion(currentQuestion + 1);
+        } else {
+          // All questions answered, prepare to generate itinerary
+          setAnswer(currentQuestion, currentInput);
+          toast.success("Great! Generating your personalized itinerary...", {
+            duration: 5000,
+            id: "generating-itinerary",
+          });
+          setIsGenerating(true);
+          setLoadingState("processing");
 
-      // Move to next question or generate itinerary
-      if (currentQuestion < QUESTIONS.length - 1) {
-        setCurrentQuestion(currentQuestion + 1);
-      } else {
-        // All questions answered, generate itinerary
-        toast.success("Great! Generating your personalized itinerary...");
-        setIsGenerating(true);
-        onFormComplete();
+          // Small delay to ensure state is updated before proceeding
+          setTimeout(() => {
+            onFormComplete();
+          }, 100);
+        }
+      } catch (error) {
+        console.error("Error during submission:", error);
+        toast.error("Something went wrong. Please try again.");
+      } finally {
+        setLoadingState("idle");
       }
     },
-    [currentInput, validateInput, setAnswer, currentQuestion, setCurrentQuestion, setIsGenerating, onFormComplete]
+    [
+      currentInput,
+      validateInput,
+      setAnswer,
+      currentQuestion,
+      setCurrentQuestion,
+      setIsGenerating,
+      onFormComplete,
+    ]
   );
 
   // Initialize welcome message

@@ -2,6 +2,8 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
+import { AuthProvider } from "@/lib/context/auth-context";
+import ItinerarySavePrompt from "@/components/auth/itinerary-save-prompt";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -35,8 +37,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex-1 flex flex-col w-full mx-auto">{children}</div>
-          <Toaster position="top-center" />
+          <AuthProvider>
+            <div className="flex-1 flex flex-col w-full mx-auto">
+              {children}
+            </div>
+            <ItinerarySavePrompt />
+            <Toaster position="top-center" />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -24,6 +24,7 @@ import Footer from "@/components/layout/footer";
 import Hero from "@/components/layout/hero";
 import TripsList from "@/components/history/trips-list";
 import TripDetail from "@/components/history/trip-detail";
+import ProtectedRoute from "@/components/auth/protected-route";
 
 // Define an interface for the selected conversation that includes all related data
 interface ConversationWithDetails extends Conversation {
@@ -39,6 +40,25 @@ interface Trip {
   created_at: string;
   num_travelers: string;
   dates: string;
+}
+
+// Define the Trip interface to match what TripDetail component expects
+interface TripDetail {
+  id: string;
+  preferences: {
+    destination: string;
+    budget: string;
+    dates: string;
+    num_travelers: string;
+    interests: string;
+    accommodation_preference: string;
+    pace_preference: string;
+    transport_preference: string;
+    must_see_places?: string;
+  };
+  itinerary: string;
+  created_at?: string | Date;
+  messages?: Message[];
 }
 
 export default function HistoryPage() {
@@ -130,82 +150,113 @@ export default function HistoryPage() {
     }));
   };
 
+  // Convert ConversationWithDetails to TripDetail format
+  const conversationToTripDetail = (
+    conversation: ConversationWithDetails | null
+  ): TripDetail | null => {
+    if (!conversation) return null;
+
+    return {
+      id: conversation.id || "",
+      preferences: {
+        destination: conversation.destination || "",
+        budget: conversation.preferences?.budget || "Not specified",
+        dates: conversation.preferences?.dates || "Not specified",
+        num_travelers:
+          conversation.preferences?.num_travelers || "Not specified",
+        interests: conversation.preferences?.interests || "Not specified",
+        accommodation_preference:
+          conversation.preferences?.accommodation_preference || "Not specified",
+        pace_preference:
+          conversation.preferences?.pace_preference || "Not specified",
+        transport_preference:
+          conversation.preferences?.transport_preference || "Not specified",
+        must_see_places: conversation.preferences?.must_see_places,
+      },
+      itinerary: conversation.itinerary || "",
+      created_at: conversation.created_at,
+      messages: conversation.messages,
+    };
+  };
+
   return (
-    <main className="min-h-screen bg-white dark:bg-gray-950">
-      {/* Hero section with navbar */}
-      <div className="relative">
-        <Navbar transparent={true} showBackButton={true} />
+    <ProtectedRoute>
+      <main className="min-h-screen bg-white dark:bg-gray-950">
+        {/* Hero section with navbar */}
+        <div className="relative">
+          <Navbar transparent={true} showBackButton={true} />
 
-        <Hero
-          title="Your Travel History"
-          highlightedWord="Travel"
-          subtitle="Access and manage all your past trips and itineraries"
-          bgImage="https://images.unsplash.com/photo-1488085061387-422e29b40080?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
-          height="h-[50vh]"
-          overlayOpacity="from-black/70 via-black/50 to-black/70"
-        />
-      </div>
+          <Hero
+            title="Your Travel History"
+            highlightedWord="Travel"
+            subtitle="Access and manage all your past trips and itineraries"
+            bgImage="https://images.unsplash.com/photo-1488085061387-422e29b40080?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
+            height="h-[50vh]"
+            overlayOpacity="from-black/70 via-black/50 to-black/70"
+          />
+        </div>
 
-      <div className="container max-w-6xl mx-auto px-4 py-12">
-        <Tabs
-          defaultValue="list"
-          value={activeTab}
-          onValueChange={setActiveTab}
-        >
-          <div className="flex items-center justify-between mb-8">
-            <TabsList className="h-12">
-              <TabsTrigger value="list" className="px-6 h-full">
-                <FontAwesomeIcon icon={faGlobe} className="mr-2" />
-                All Itineraries
-              </TabsTrigger>
-              <TabsTrigger
-                value="detail"
-                disabled={!selectedConversation}
-                className="px-6 h-full"
-              >
-                <FontAwesomeIcon icon={faMapMarkedAlt} className="mr-2" />
-                Itinerary Details
-              </TabsTrigger>
-            </TabsList>
+        <div className="container max-w-6xl mx-auto px-4 py-12">
+          <Tabs
+            defaultValue="list"
+            value={activeTab}
+            onValueChange={setActiveTab}
+          >
+            <div className="flex items-center justify-between mb-8">
+              <TabsList className="h-12">
+                <TabsTrigger value="list" className="px-6 h-full">
+                  <FontAwesomeIcon icon={faGlobe} className="mr-2" />
+                  All Itineraries
+                </TabsTrigger>
+                <TabsTrigger
+                  value="detail"
+                  disabled={!selectedConversation}
+                  className="px-6 h-full"
+                >
+                  <FontAwesomeIcon icon={faMapMarkedAlt} className="mr-2" />
+                  Itinerary Details
+                </TabsTrigger>
+              </TabsList>
 
-            {activeTab === "list" && (
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search destinations..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <FontAwesomeIcon
-                  icon={searchTerm ? faTimes : faSearchLocation}
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
-                  onClick={() => (searchTerm ? setSearchTerm("") : null)}
-                />
-              </div>
-            )}
-          </div>
+              {activeTab === "list" && (
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search destinations..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <FontAwesomeIcon
+                    icon={searchTerm ? faTimes : faSearchLocation}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
+                    onClick={() => (searchTerm ? setSearchTerm("") : null)}
+                  />
+                </div>
+              )}
+            </div>
 
-          <TabsContent value="list">
-            <TripsList
-              trips={conversationsToTrips(conversations)}
-              isLoading={isLoading}
-              onTripSelect={loadConversation}
-              searchTerm={searchTerm}
-            />
-          </TabsContent>
+            <TabsContent value="list">
+              <TripsList
+                trips={conversationsToTrips(conversations)}
+                isLoading={isLoading}
+                onTripSelect={loadConversation}
+                searchTerm={searchTerm}
+              />
+            </TabsContent>
 
-          <TabsContent value="detail">
-            <TripDetail
-              trip={selectedConversation}
-              onBackClick={() => setActiveTab("list")}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
+            <TabsContent value="detail">
+              <TripDetail
+                trip={conversationToTripDetail(selectedConversation)}
+                onBackClick={() => setActiveTab("list")}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
 
-      {/* Footer */}
-      <Footer />
-    </main>
+        {/* Footer */}
+        <Footer />
+      </main>
+    </ProtectedRoute>
   );
 }

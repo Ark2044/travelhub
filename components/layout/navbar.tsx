@@ -12,8 +12,11 @@ import {
   faBars,
   faTimes,
   faGlobe,
+  faUser,
+  faSignOutAlt,
 } from "@fortawesome/free-solid-svg-icons";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "@/lib/context/auth-context";
 
 interface NavbarProps {
   isVoiceEnabled?: boolean;
@@ -30,7 +33,9 @@ export default function Navbar({
 }: NavbarProps) {
   const [showSearch, setShowSearch] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
 
   // Handle scroll effect
   useEffect(() => {
@@ -41,6 +46,11 @@ export default function Navbar({
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    setShowUserDropdown(false);
+  };
 
   const navbarClasses = transparent
     ? `fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
@@ -179,6 +189,74 @@ export default function Navbar({
                   </Button>
                 </Link>
               )}
+
+              {/* Authentication UI */}
+              {isAuthenticated ? (
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className={`${
+                      transparent ? "text-white hover:bg-white/10" : ""
+                    } rounded-full px-3`}
+                  >
+                    <FontAwesomeIcon icon={faUser} className="mr-2" />
+                    <span className="text-sm truncate max-w-[100px]">
+                      {user?.name}
+                    </span>
+                  </Button>
+
+                  {showUserDropdown && (
+                    <div
+                      className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+                      onMouseLeave={() => setShowUserDropdown(false)}
+                    >
+                      <div className="py-1">
+                        <Link
+                          href="/profile"
+                          className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => setShowUserDropdown(false)}
+                        >
+                          Your Profile
+                        </Link>
+                        <button
+                          onClick={handleLogout}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        >
+                          <FontAwesomeIcon
+                            icon={faSignOutAlt}
+                            className="mr-2"
+                          />
+                          Sign out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link href="/login">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`${
+                        transparent ? "text-white hover:bg-white/10" : ""
+                      } rounded-full px-3`}
+                    >
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/signup">
+                    <Button
+                      size="sm"
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-full px-4"
+                    >
+                      Sign Up
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 
@@ -285,6 +363,77 @@ export default function Navbar({
                     {isVoiceEnabled ? "Disable Voice" : "Enable Voice"}
                   </Button>
                 )}
+
+                {/* Mobile Authentication UI */}
+                <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                  {isAuthenticated ? (
+                    <div className="flex flex-col space-y-2 mt-3">
+                      <div className="flex items-center px-4 py-2">
+                        <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white mr-3">
+                          <FontAwesomeIcon icon={faUser} size="sm" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{user?.name}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {user?.email}
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href="/profile"
+                        className={`text-lg px-4 py-3 ${
+                          transparent
+                            ? "text-white hover:bg-white/10"
+                            : "hover:bg-gray-100 dark:hover:bg-gray-800"
+                        } rounded-lg transition-colors`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Your Profile
+                      </Link>
+                      <Button
+                        variant={transparent ? "outline" : "secondary"}
+                        onClick={async () => {
+                          await handleLogout();
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`flex items-center justify-center gap-2 w-full rounded-full ${
+                          transparent
+                            ? "bg-white/10 border-white/20 text-white"
+                            : ""
+                        }`}
+                      >
+                        <FontAwesomeIcon icon={faSignOutAlt} />
+                        Sign Out
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col space-y-2 mt-3">
+                      <Link
+                        href="/login"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Button
+                          variant={transparent ? "outline" : "secondary"}
+                          className={`w-full ${
+                            transparent
+                              ? "bg-white/10 border-white/20 text-white"
+                              : ""
+                          }`}
+                        >
+                          Sign In
+                        </Button>
+                      </Link>
+                      <Link
+                        href="/signup"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white">
+                          Sign Up
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
