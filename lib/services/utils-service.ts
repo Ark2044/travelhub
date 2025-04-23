@@ -114,7 +114,7 @@ export const searchImages = async (
 ): Promise<UnsplashImage[]> => {
   try {
     // Get Access Key from environment variables
-    const accessKey = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY;
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
     if (!accessKey) {
       console.error("Missing Unsplash access key");
       return [];
