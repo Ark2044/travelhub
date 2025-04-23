@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuthStore } from "@/lib/store/auth-store";
 import AuthLoading from "./auth-loading";
 
 export default function ProtectedRoute({
@@ -10,13 +10,16 @@ export default function ProtectedRoute({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthStore();
+  const checkAuthStatus = useAuthStore((state) => state.checkAuthStatus);
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    // Check auth status when component mounts
+    checkAuthStatus();
+  }, [checkAuthStatus]);
 
   useEffect(() => {
     // Only redirect after we confirm it's client-side and authentication is checked

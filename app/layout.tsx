@@ -2,7 +2,7 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/lib/context/auth-context";
+import AuthInitializer from "@/components/auth/auth-initializer";
 import ItinerarySavePrompt from "@/components/auth/itinerary-save-prompt";
 
 const geist = Geist({
@@ -37,13 +37,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
+          <AuthInitializer>
             <div className="flex-1 flex flex-col w-full mx-auto">
               {children}
             </div>
             <ItinerarySavePrompt />
             <Toaster position="top-center" />
-          </AuthProvider>
+          </AuthInitializer>
         </ThemeProvider>
       </body>
     </html>

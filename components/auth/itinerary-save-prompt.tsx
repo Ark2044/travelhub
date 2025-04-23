@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuthStore } from "@/lib/store/auth-store";
 import { useTravelStore } from "@/lib/store/travel-store";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -10,7 +10,7 @@ import { conversationService } from "@/lib/appwrite/conversation-service";
 
 export default function ItinerarySavePrompt() {
   const [showPrompt, setShowPrompt] = useState(false);
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuthStore();
   const {
     generatedItinerary,
     answers,
@@ -89,7 +89,7 @@ export default function ItinerarySavePrompt() {
         </button>
       </div>
       <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-        Welcome {user?.name}! We noticed you've created an itinerary. Would you
+        Welcome {user?.name}! We noticed you&apos;ve created an itinerary. Would you
         like to save it to your account to access it later?
       </p>
       <div className="flex gap-2">

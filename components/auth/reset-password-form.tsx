@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { resetPassword } from "@/lib/appwrite/auth-service";
+import { useAuthStore } from "@/lib/store/auth-store";
 
 const formSchema = z
   .object({
@@ -24,6 +24,7 @@ const formSchema = z
 type FormData = z.infer<typeof formSchema>;
 
 export default function ResetPasswordForm() {
+  const resetPassword = useAuthStore((state) => state.resetPassword);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
@@ -56,13 +57,23 @@ export default function ResetPasswordForm() {
     setSuccess(false);
 
     try {
-      await resetPassword(userId, secret, data.password, data.confirmPassword);
-      setSuccess(true);
-
-      // Redirect to login page after 2 seconds
-      setTimeout(() => {
-        router.push("/login");
-      }, 2000);
+      const success = await resetPassword(
+        userId,
+        secret,
+        data.password,
+        data.confirmPassword
+      );
+      if (success) {
+        setSuccess(true);
+        // Redirect to login page after 2 seconds
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      } else {
+        setError(
+          "Failed to reset password. Please try again or request a new link."
+        );
+      }
     } catch (error) {
       console.error("Password reset error:", error);
       setError(

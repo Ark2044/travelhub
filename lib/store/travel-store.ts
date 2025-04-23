@@ -70,7 +70,7 @@ export interface TravelState {
   generateTravelPlan: () => Promise<
     | {
         success: boolean;
-        conversationId?: any;
+        conversationId?: string | null;
         error?: string;
       }
     | undefined
@@ -358,7 +358,10 @@ export const useTravelStore = create<TravelState>()(
             if (storageSizeMB > 4) {
               // Create a trimmed version with essential data only
               // First convert to unknown, then to Record type to avoid direct string conversion error
-              const valueObj = value as unknown as Record<string, any>;
+              const valueObj = value as unknown as {
+                generatedItinerary?: string;
+                images?: { url: string; thumb: string; alt: string; credit: string; category: string }[];
+              };
               const trimmedValue = {
                 ...valueObj,
                 // Keep only minimal data needed for user experience

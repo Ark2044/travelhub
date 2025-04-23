@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { sendPasswordRecovery } from "@/lib/appwrite/auth-service";
+import { useAuthStore } from "@/lib/store/auth-store";
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -15,6 +15,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export default function ForgotPasswordForm() {
+  const forgotPassword = useAuthStore((state) => state.forgotPassword);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
@@ -36,8 +37,12 @@ export default function ForgotPasswordForm() {
     setSuccess(false);
 
     try {
-      await sendPasswordRecovery(data.email);
-      setSuccess(true);
+      const success = await forgotPassword(data.email);
+      if (success) {
+        setSuccess(true);
+      } else {
+        setError("Failed to send password reset link. Please try again.");
+      }
     } catch (error) {
       console.error("Password recovery error:", error);
       setError("Failed to send password reset link. Please try again.");

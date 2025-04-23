@@ -16,7 +16,8 @@ import {
   faSignOutAlt,
 } from "@fortawesome/free-solid-svg-icons";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuthStore } from "@/lib/store/auth-store";
+import { useRouter } from "next/navigation";
 
 interface NavbarProps {
   isVoiceEnabled?: boolean;
@@ -35,7 +36,9 @@ export default function Navbar({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
+  const router = useRouter();
 
   // Handle scroll effect
   useEffect(() => {
@@ -50,6 +53,7 @@ export default function Navbar({
   const handleLogout = async () => {
     await logout();
     setShowUserDropdown(false);
+    router.push("/login");
   };
 
   const navbarClasses = transparent

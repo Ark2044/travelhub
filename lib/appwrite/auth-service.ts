@@ -28,8 +28,21 @@ export async function createUserAccount(user: CreateUserAccount) {
     });
 
     return session;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error creating user account:", error);
+
+    // Check if error is for an existing user
+    if (
+      error instanceof Error &&
+      error.message.includes(
+        "user with the same id, email, or phone already exists"
+      )
+    ) {
+      throw new Error(
+        "An account with this email already exists. Please try logging in instead."
+      );
+    }
+
     throw error;
   }
 }
@@ -49,12 +62,52 @@ export async function signInAccount(user: LoginUserAccount) {
 
 export async function getCurrentUser() {
   try {
-    const currentAccount = await account.get();
-    if (!currentAccount) throw Error;
+    // Check if we're in a browser environment before attempting to get the account
+    if (typeof window === "undefined") {
+      console.log("Not in browser environment, skipping auth check");
+      return null;
+    }
+
+    // Try to get the current account with retry logic
+    let attempts = 0;
+    const maxAttempts = 2;
+    let currentAccount = null;
+
+    while (attempts < maxAttempts && !currentAccount) {
+      try {
+        currentAccount = await account.get();
+        break;
+      } catch (retryError) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`Retrying account fetch, attempt ${attempts}`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        } else {
+          throw retryError;
+        }
+      }
+    }
+
+    if (!currentAccount) {
+      console.log("No account found after attempts");
+      return null;
+    }
 
     return currentAccount;
   } catch (error) {
-    console.error("Error getting current user:", error);
+    // Check specifically for authentication errors
+    if (
+      error instanceof Error &&
+      (error.message.includes("Missing credentials") ||
+        error.message.includes("Invalid credentials") ||
+        error.message.includes("missing scope"))
+    ) {
+      console.log(
+        "Authentication error: User not logged in or session expired"
+      );
+    } else {
+      console.error("Error getting current user:", error);
+    }
     return null;
   }
 }

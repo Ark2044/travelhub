@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuthStore } from "@/lib/store/auth-store";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { account } from "@/lib/appwrite/config";
@@ -17,7 +17,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export default function ProfileForm() {
-  const { user, setUser } = useAuth();
+  const user = useAuthStore((state) => state.user);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const {
@@ -36,7 +36,8 @@ export default function ProfileForm() {
 
     try {
       const updatedUser = await account.updateName(data.name);
-      setUser(updatedUser);
+      // Update the user in the store
+      useAuthStore.setState({ user: updatedUser });
       toast.success("Profile updated successfully");
     } catch (error) {
       console.error("Error updating profile:", error);

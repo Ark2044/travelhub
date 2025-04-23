@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuthStore } from "@/lib/store/auth-store";
 
 const formSchema = z
   .object({
@@ -27,7 +27,7 @@ const formSchema = z
 type FormData = z.infer<typeof formSchema>;
 
 export default function SignupForm() {
-  const { signup } = useAuth();
+  const signup = useAuthStore((state) => state.signup);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -51,15 +51,25 @@ export default function SignupForm() {
     setError(null);
 
     try {
-      await signup({
+      const success = await signup({
         name: data.name,
         email: data.email,
         password: data.password,
       });
-      router.push("/");
-    } catch (error: any) {
+
+      if (success) {
+        router.push("/");
+      } else {
+        setError("Failed to create account. Please try again.");
+      }
+    } catch (error: unknown) {
       console.error("Signup error:", error);
-      if (error.message && error.message.includes("email already exists")) {
+      if (
+        error instanceof Error &&
+        error.message &&
+        (error.message.includes("email already exists") ||
+          error.message.includes("An account with this email already exists"))
+      ) {
         setError(
           "Email already exists. Please use a different email or login."
         );
