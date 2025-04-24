@@ -79,7 +79,7 @@ export interface TravelState {
 }
 
 // Helper function to trim large data when approaching localStorage limits
-const trimLargeData = (data: any) => {
+const trimLargeData = (data: Partial<TravelState>) => {
   // Only apply trimming if the data exists and exceeds certain thresholds
   const trimmed = { ...data };
 
@@ -339,7 +339,7 @@ export const useTravelStore = create<TravelState>()(
     })),
     {
       name: "travel-planner-storage",
-      storage: createJSONStorage(() => createPersistStorage(trimLargeData)),
+      storage: createJSONStorage(() => createPersistStorage((data) => trimLargeData(data as Partial<TravelState>))),
       partialize: (state) => ({
         currentConversationId: state.currentConversationId,
         currentDestination: state.currentDestination,

@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
  * Creates a consistent storage configuration for Zustand persist middleware
  * @param trimFunction Optional function to trim data when storage is getting large
  */
-export const createPersistStorage = (trimFunction?: (data: any) => any) => {
+export const createPersistStorage = (trimFunction?: (data: unknown) => unknown) => {
   return {
     getItem: (name: string) => {
       try {
@@ -40,7 +40,7 @@ export const createPersistStorage = (trimFunction?: (data: any) => any) => {
         return null;
       }
     },
-    setItem: (name: string, value: any) => {
+    setItem: (name: string, value: unknown) => {
       try {
         // Check if we're in a browser environment
         if (typeof window === "undefined") {
