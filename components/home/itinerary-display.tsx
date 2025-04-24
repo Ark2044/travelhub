@@ -5,7 +5,12 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faDownload, faPlus } from "@fortawesome/free-solid-svg-icons";
+import {
+  faDownload,
+  faPlus,
+  faSearch,
+  faSpinner,
+} from "@fortawesome/free-solid-svg-icons";
 import { toast } from "sonner";
 import { useTravelStore } from "@/lib/store/travel-store";
 import { generatePDF } from "@/lib/services/utils-service";
@@ -17,10 +22,20 @@ interface ItineraryDisplayProps {
 export default function ItineraryDisplay({
   onNewTripClick,
 }: ItineraryDisplayProps) {
-  const { answers, generatedItinerary, images, resetCurrentSession } =
-    useTravelStore();
+  const {
+    answers,
+    generatedItinerary,
+    images,
+    resetCurrentSession,
+    fetchSimilarImages,
+    isSubmitting,
+  } = useTravelStore();
 
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
+    null
+  );
+  const [showImageModal, setShowImageModal] = useState(false);
 
   // Download PDF itinerary
   const downloadPDF = () => {
@@ -68,6 +83,101 @@ export default function ItineraryDisplay({
     onNewTripClick();
   };
 
+  // Handle image click for similar images search
+  const handleImageClick = (idx: number) => {
+    setSelectedImageIndex(idx);
+    setShowImageModal(true);
+  };
+
+  // Find similar images using Groq Vision
+  const findSimilarImages = async () => {
+    if (selectedImageIndex === null) return;
+
+    const imageUrl =
+      selectedImageIndex === 0
+        ? images[0].url
+        : images.slice(1)[selectedImageIndex - 1].url;
+
+    setShowImageModal(false);
+
+    try {
+      toast.info("Finding similar destinations using AI vision...");
+      await fetchSimilarImages(imageUrl);
+      toast.success("Found similar destinations!");
+    } catch (error) {
+      toast.error("Failed to find similar images");
+      console.error("Error finding similar images:", error);
+    }
+  };
+
+  // Image modal component
+  const ImageModal = () => {
+    if (selectedImageIndex === null || !showImageModal) return null;
+
+    const imageUrl =
+      selectedImageIndex === 0
+        ? images[0].url
+        : images.slice(1)[selectedImageIndex - 1].url;
+
+    const imageAlt =
+      selectedImageIndex === 0
+        ? `${answers[0]} skyline`
+        : images.slice(1)[selectedImageIndex - 1].alt || "Destination image";
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+        <div className="bg-white dark:bg-gray-900 p-4 rounded-xl max-w-2xl w-full mx-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold">Image View</h3>
+            <Button
+              variant="ghost"
+              onClick={() => setShowImageModal(false)}
+              className="h-8 w-8 p-0 rounded-full"
+            >
+              ✕
+            </Button>
+          </div>
+
+          <div className="relative h-80 w-full mb-4">
+            <Image
+              src={imageUrl}
+              alt={imageAlt}
+              className="object-contain rounded-lg"
+              fill
+              sizes="(max-width: 768px) 90vw, 40vw"
+            />
+          </div>
+
+          <div className="mt-4 flex justify-between">
+            <Button variant="outline" onClick={() => setShowImageModal(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={findSimilarImages}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <FontAwesomeIcon
+                    icon={faSpinner}
+                    className="animate-spin mr-2"
+                  />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faSearch} className="mr-2" />
+                  Find Similar Destinations
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!generatedItinerary) {
     return (
       <Card className="border-0 shadow-xl rounded-xl overflow-hidden max-w-2xl mx-auto">
@@ -106,8 +216,9 @@ export default function ItineraryDisplay({
             alt={`${answers[0]} skyline`}
             fill
             priority
-            className="object-cover"
+            className="object-cover cursor-pointer"
             sizes="(max-width: 1024px) 100vw, 1024px"
+            onClick={() => handleImageClick(0)}
           />
         ) : (
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full w-full"></div>
@@ -316,13 +427,21 @@ export default function ItineraryDisplay({
 
         {/* Sidebar with destination images and information */}
         <div className="space-y-8">
-          {/* Destination highlights */}
+          {/* Destination highlights with vision search */}
           <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
             <CardHeader className="bg-white dark:bg-gray-900 pb-3 border-b">
-              <CardTitle>
+              <CardTitle className="flex items-center justify-between">
                 <h3 className="text-xl font-medium text-gray-800 dark:text-gray-200">
                   Destination Highlights
                 </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  <FontAwesomeIcon icon={faSearch} className="mr-1" />
+                  <span className="hidden sm:inline">Vision Search</span>
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
@@ -331,15 +450,24 @@ export default function ItineraryDisplay({
                   {images.slice(1, 7).map((image, idx) => (
                     <div
                       key={idx}
-                      className="relative h-24 md:h-32 rounded-xl overflow-hidden shadow-sm"
+                      className="relative h-24 md:h-32 rounded-xl overflow-hidden shadow-sm cursor-pointer group"
+                      onClick={() => handleImageClick(idx + 1)}
                     >
                       <Image
                         src={image.url}
                         alt={image.alt || "Destination image"}
-                        className="object-cover hover:scale-110 transition-transform duration-500"
+                        className="object-cover group-hover:scale-110 transition-transform duration-500"
                         fill
                         sizes="(max-width: 768px) 50vw, 33vw"
                       />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <div className="bg-black/50 rounded-full p-2">
+                          <FontAwesomeIcon
+                            icon={faSearch}
+                            className="text-white h-3 w-3"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -348,6 +476,17 @@ export default function ItineraryDisplay({
                   <p className="text-gray-500">No images available</p>
                 </div>
               )}
+              {images.length > 0 &&
+                images.some(
+                  (img) => img.category === "Vision-enhanced Results"
+                ) && (
+                  <div className="mt-4 pt-3 border-t">
+                    <p className="text-xs text-gray-500">
+                      Some images were enhanced with Groq Vision AI to match
+                      your preferences.
+                    </p>
+                  </div>
+                )}
             </CardContent>
           </Card>
 
@@ -387,6 +526,9 @@ export default function ItineraryDisplay({
           </div>
         </div>
       </div>
+
+      {/* Modal for image viewing and similar image search */}
+      {showImageModal && <ImageModal />}
     </div>
   );
 }

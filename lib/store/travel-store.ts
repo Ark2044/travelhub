@@ -50,6 +50,7 @@ export interface TravelState {
 
   // Images
   images: TravelImage[];
+  referenceImageUrl: string | null;
 
   // Methods
   setCurrentQuestion: (index: number) => void;
@@ -66,8 +67,10 @@ export interface TravelState {
   addMessage: (message: Message) => void;
   setImages: (images: TravelImage[]) => void;
   toggleVoice: (enabled: boolean) => void;
+  setReferenceImageUrl: (url: string | null) => void;
   resetCurrentSession: () => void;
-  fetchDestinationImages: () => Promise<void>;
+  fetchDestinationImages: (referenceImageUrl?: string) => Promise<void>;
+  fetchSimilarImages: (referenceImageUrl: string) => Promise<void>;
   generateTravelPlan: () => Promise<
     | {
         success: boolean;
@@ -120,6 +123,7 @@ export const useTravelStore = create<TravelState>()(
       currentPreferences: null,
 
       images: [],
+      referenceImageUrl: null,
 
       setCurrentQuestion: (index) =>
         set((state) => {
@@ -192,6 +196,11 @@ export const useTravelStore = create<TravelState>()(
           state.isVoiceEnabled = enabled;
         }),
 
+      setReferenceImageUrl: (url) =>
+        set((state) => {
+          state.referenceImageUrl = url;
+        }),
+
       resetCurrentSession: () =>
         set((state) => {
           state.answers = Array(QUESTIONS.length).fill("");
@@ -203,9 +212,10 @@ export const useTravelStore = create<TravelState>()(
           state.currentMessages = [];
           state.currentPreferences = null;
           state.images = [];
+          state.referenceImageUrl = null;
         }),
 
-      fetchDestinationImages: async () => {
+      fetchDestinationImages: async (customReferenceImageUrl?: string) => {
         const state = get();
         const destination = state.currentDestination;
         if (!destination) return;
@@ -218,14 +228,19 @@ export const useTravelStore = create<TravelState>()(
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
+          // Use either the provided custom reference image or the stored one
+          const referenceImageUrl =
+            customReferenceImageUrl || state.referenceImageUrl;
+
           const response = await fetch("/api/search-images", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              query: destination, // Using destination as the query to fix the error
+              query: destination,
               destination,
+              referenceImageUrl: referenceImageUrl || undefined,
             }),
             signal: controller.signal,
           });
@@ -261,6 +276,23 @@ export const useTravelStore = create<TravelState>()(
                 },
               ];
             }
+            state.isSubmitting = false;
+          });
+        }
+      },
+
+      fetchSimilarImages: async (referenceImageUrl: string) => {
+        try {
+          set((state) => {
+            state.isSubmitting = true;
+            state.referenceImageUrl = referenceImageUrl;
+          });
+
+          // Call the regular fetch function with the reference image
+          await get().fetchDestinationImages(referenceImageUrl);
+        } catch (error) {
+          console.error("Error fetching similar images:", error);
+          set((state) => {
             state.isSubmitting = false;
           });
         }
@@ -339,7 +371,11 @@ export const useTravelStore = create<TravelState>()(
     })),
     {
       name: "travel-planner-storage",
-      storage: createJSONStorage(() => createPersistStorage((data) => trimLargeData(data as Partial<TravelState>))),
+      storage: createJSONStorage(() =>
+        createPersistStorage((data) =>
+          trimLargeData(data as Partial<TravelState>)
+        )
+      ),
       partialize: (state) => ({
         currentConversationId: state.currentConversationId,
         currentDestination: state.currentDestination,

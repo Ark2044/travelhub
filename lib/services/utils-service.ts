@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { enhanceSearchWithVision } from "./groq-vision-service";
 
 // Types for PDF generation
 export interface PdfOptions {
@@ -392,7 +393,8 @@ interface UnsplashPhoto {
 
 export const searchImages = async (
   query: string,
-  destination: string
+  destination: string,
+  referenceImageUrl?: string
 ): Promise<UnsplashImage[]> => {
   try {
     // Get Access Key from environment variables
@@ -402,15 +404,38 @@ export const searchImages = async (
       return FALLBACK_IMAGES;
     }
 
-    // Create optimized search query
     const enhancedQuery = createOptimizedQuery(query, destination);
+    let additionalQueries: string[] = [];
+
+    // Use Groq Vision to enhance search if a reference image is provided
+    if (referenceImageUrl && process.env.GROQ_API_KEY) {
+      try {
+        console.log("Using Groq Vision to enhance image search...");
+
+        const visionSearchTerms = await enhanceSearchWithVision(
+          referenceImageUrl,
+          destination
+        );
+
+        if (visionSearchTerms && visionSearchTerms.length > 0) {
+          additionalQueries = visionSearchTerms;
+          console.log("Vision-enhanced search terms:", additionalQueries);
+        }
+      } catch (visionError) {
+        console.error("Error using Vision enhancement:", visionError);
+        // Continue with standard search if vision enhancement fails
+      }
+    }
 
     // Set a timeout for the API request
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
+    // Store all image search results
+    let allResults: UnsplashImage[] = [];
+
     try {
-      // Make request to Unsplash API with improved parameters
+      // First search using the original enhanced query
       const response = await fetch(
         `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
           enhancedQuery
@@ -418,46 +443,107 @@ export const searchImages = async (
         { signal: controller.signal }
       );
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
         throw new Error(`Unsplash API error: ${response.status}`);
       }
 
       const data = await response.json();
 
-      if (!data.results || data.results.length === 0) {
+      if (data.results && data.results.length > 0) {
+        const getCategoryFromQuery = (q: string): string => {
+          if (/hotel|resort|hostel|airbnb|accommodation|stay/i.test(q)) {
+            return "Accommodation";
+          } else if (/food|dish|cuisine|restaurant|dining|eat/i.test(q)) {
+            return "Food & Dining";
+          } else if (/beach|coast|ocean|sea|shore/i.test(q)) {
+            return "Beaches & Coasts";
+          } else if (/mountain|hill|peak|hiking|trekking/i.test(q)) {
+            return "Mountains & Nature";
+          } else if (/museum|landmark|attraction|monument/i.test(q)) {
+            return "Attractions";
+          } else if (/tour|adventure|excursion|activity/i.test(q)) {
+            return "Activities & Experiences";
+          } else {
+            return destination ? `Places in ${destination}` : "Destinations";
+          }
+        };
+
+        // Process results from standard search
+        const standardResults = data.results.map((photo: UnsplashPhoto) => ({
+          url: photo.urls.regular,
+          thumb: photo.urls.thumb,
+          alt: photo.alt_description || `${destination} ${query}`.trim(),
+          credit: `Photo by ${photo.user.name} on Unsplash`,
+          category: getCategoryFromQuery(query),
+        }));
+
+        allResults = [...standardResults];
+      }
+
+      // If we have additional queries from vision analysis, search for each one
+      if (additionalQueries.length > 0) {
+        // Only get 1-2 results per vision-enhanced query to avoid rate limiting
+        const resultsPerQuery = Math.floor(8 / additionalQueries.length);
+
+        // Use Promise.all to make parallel requests for each vision-enhanced query
+        const visionSearchPromises = additionalQueries
+          .slice(0, 4)
+          .map(async (visionQuery) => {
+            try {
+              const visionResponse = await fetch(
+                `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
+                  visionQuery
+                )}&per_page=${resultsPerQuery}&orientation=landscape&content_filter=high&client_id=${accessKey}`
+              );
+
+              if (!visionResponse.ok) return [];
+
+              const visionData = await visionResponse.json();
+
+              if (!visionData.results || visionData.results.length === 0)
+                return [];
+
+              return visionData.results.map((photo: UnsplashPhoto) => ({
+                url: photo.urls.regular,
+                thumb: photo.urls.thumb,
+                alt: photo.alt_description || visionQuery,
+                credit: `Photo by ${photo.user.name} on Unsplash`,
+                category: "Vision-enhanced Results",
+              }));
+            } catch (error) {
+              console.error(
+                `Error fetching vision query "${visionQuery}":`,
+                error
+              );
+              return [];
+            }
+          });
+
+        // Wait for all vision-enhanced queries to complete
+        const visionResults = await Promise.all(visionSearchPromises);
+
+        // Flatten the results and add to allResults
+        const flattenedVisionResults = visionResults.flat();
+        allResults = [...allResults, ...flattenedVisionResults];
+      }
+
+      clearTimeout(timeoutId);
+
+      // If we got no results at all, use fallbacks
+      if (allResults.length === 0) {
         console.log("No images found, using fallbacks");
         return FALLBACK_IMAGES;
       }
 
-      // Determine category based on query and create proper attribution
-      const getCategoryFromQuery = (q: string): string => {
-        if (/hotel|resort|hostel|airbnb|accommodation|stay/i.test(q)) {
-          return "Accommodation";
-        } else if (/food|dish|cuisine|restaurant|dining|eat/i.test(q)) {
-          return "Food & Dining";
-        } else if (/beach|coast|ocean|sea|shore/i.test(q)) {
-          return "Beaches & Coasts";
-        } else if (/mountain|hill|peak|hiking|trekking/i.test(q)) {
-          return "Mountains & Nature";
-        } else if (/museum|landmark|attraction|monument/i.test(q)) {
-          return "Attractions";
-        } else if (/tour|adventure|excursion|activity/i.test(q)) {
-          return "Activities & Experiences";
-        } else {
-          return destination ? `Places in ${destination}` : "Destinations";
-        }
-      };
+      // Deduplicate based on URL
+      const uniqueUrls = new Set<string>();
+      const uniqueResults = allResults.filter((img) => {
+        if (uniqueUrls.has(img.url)) return false;
+        uniqueUrls.add(img.url);
+        return true;
+      });
 
-      // Format and categorize images
-      return data.results.map((photo: UnsplashPhoto) => ({
-        url: photo.urls.regular,
-        thumb: photo.urls.thumb,
-        alt: photo.alt_description || `${destination} ${query}`.trim(),
-        credit: `Photo by ${photo.user.name} on Unsplash`,
-        category: getCategoryFromQuery(query),
-      }));
+      return uniqueResults;
     } catch (fetchError) {
       clearTimeout(timeoutId);
       console.error("Fetch error during image search:", fetchError);
