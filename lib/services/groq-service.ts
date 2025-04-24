@@ -22,12 +22,12 @@ export const buildPrompt = (answers: string[]) => {
     "Do you have any must-visit places or experiences in mind?",
   ];
 
-  let prompt =
-    "You are a professional travel planner creating a personalized travel itinerary. Plan a detailed, realistic, and engaging trip based on these preferences:\n\n";
+  // Create a more concise prompt to save tokens
+  let prompt = "Create a travel itinerary based on these preferences:\n\n";
 
   // Add the user's answers to the prompt with clear labeling
   for (let i = 0; i < questions.length; i++) {
-    prompt += `QUESTION: ${questions[i]}\nANSWER: ${answers[i]}\n\n`;
+    prompt += `${questions[i]} ${answers[i]}\n\n`;
   }
 
   // Extract duration for day-by-day planning
@@ -48,81 +48,20 @@ export const buildPrompt = (answers: string[]) => {
     console.log("Failed to parse duration from date string, using default", e);
   }
 
-  // Create a more structured prompt with clear sections
+  // Create a more structured but token-efficient prompt
   prompt += `
-TASK:
-Create a comprehensive ${durationDays}-day travel itinerary for ${
-    answers[0]
-  } that perfectly matches the traveler's preferences.
-The budget is ${answers[1]}, and the trip is for ${
-    answers[3]
-  } travelers who enjoy ${answers[4]}.
-They prefer ${answers[6]}-paced trips with ${
-    answers[5]
-  } accommodations and prefer to get around using ${answers[7]}.
-${answers[8] ? `They specifically want to visit: ${answers[8]}` : ""}
+Create a ${durationDays}-day travel itinerary for ${answers[0]} with budget ${answers[1]}.
+Include these sections:
+1. OVERVIEW: Brief intro to the destination and highlights
+2. TRAVEL METHOD: Transportation options to and around ${answers[0]}
+3. ACCOMMODATION: 2-3 ${answers[5]} options that match their ${answers[1]} budget
+4. DAY-BY-DAY ITINERARY: For each of the ${durationDays} days, include morning, afternoon, and evening activities
+5. DINING RECOMMENDATIONS: 4-6 specific restaurants
+6. LOCAL EXPERIENCES: Based on their interest in ${answers[4]}
+7. TRAVEL TIPS: Practical advice for ${answers[0]}
+8. LOCAL GUIDE CONTACT (Use: "Your guide is Alex Rivera. Contact: alex.rivera@travelhub.local")
 
-Your itinerary must include these sections, formatted with UPPERCASE section titles:
-
-OVERVIEW
-A brief introduction to the destination and what makes this itinerary special. Mention the duration, traveler count, and key highlights.
-
-TRAVEL METHOD
-How to get to ${
-    answers[0]
-  } and the recommended transportation options around the destination.
-Include specific transportation companies, estimated costs, and booking tips.
-
-ACCOMMODATION
-3-5 specific accommodations that match their ${answers[1]} budget and ${
-    answers[5]
-  } preference.
-For each place, include:
-- Name and brief description
-- Location benefits
-- Price range per night
-- Unique features
-- Booking recommendations
-
-DAY-BY-DAY ITINERARY
-Create a detailed plan for each of the ${durationDays} days with:
-DAY X: [THEME FOR THE DAY]
-MORNING: Specific activities, locations, opening hours, and tips
-AFTERNOON: Continuation of the day's exploration with specific recommendations
-EVENING: Dinner suggestions, nightlife or relaxation options with venue names
-
-DINING RECOMMENDATIONS
-8-10 specific dining options including:
-- Restaurant/cafe name
-- Location
-- Signature dishes
-- Price range
-- Best time to visit
-Mix high-end and budget-friendly options that match their interests in ${
-    answers[4]
-  }.
-
-LOCAL EXPERIENCES
-Authentic activities based on their interest in ${answers[4]}, including:
-- Cultural events
-- Hidden gems
-- Unique experiences
-- Shopping opportunities
-- Entertainment options
-
-TRAVEL TIPS
-Practical advice specific to ${answers[0]} such as:
-- Local customs
-- Weather considerations
-- Money-saving tips
-- Safety information
-- Essential apps or services
-
-LOCAL GUIDE CONTACT
-Always include this exact text at the end of your itinerary:
-"Your personal local guide for this trip is Alex Rivera. For customized experiences and insider knowledge, contact Alex at +1-555-234-5678 or alex.rivera@travelhub.local"
-
-Format the response with clear sections, proper spacing, and engaging descriptions. Make it feel like a premium travel guide created just for them. Avoid generic advice and include specific names of places, attractions, and restaurants throughout.
+Format with clear section headings and be specific with venue names and activities.
 `;
 
   return prompt;
@@ -137,13 +76,13 @@ export const generateItinerary = async (answers: string[]): Promise<string> => {
 
     const prompt = buildPrompt(answers);
 
-    // Try primary model first
+    // Try primary model first with reduced token count
     try {
       const completion = await groq.chat.completions.create({
         model: PRIMARY_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1200, // Increased token limit for more detailed itineraries
+        max_tokens: 800, // Reduced token limit to prevent exhaustion
         stop: null,
       });
 
@@ -160,12 +99,12 @@ export const generateItinerary = async (answers: string[]): Promise<string> => {
         primaryModelError
       );
 
-      // Fall back to alternative model
+      // Fall back to alternative model with even smaller token limit
       const fallbackCompletion = await groq.chat.completions.create({
         model: FALLBACK_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 600, // Further reduced for fallback model
         stop: null,
       });
 
@@ -209,7 +148,7 @@ export const generateItineraryStream = async (
         model: model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1200,
+        max_tokens: 800, // Reduced to prevent token exhaustion
         stop: null,
         stream: true,
       });
@@ -231,7 +170,7 @@ export const generateItineraryStream = async (
         model: model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 600, // Further reduced for fallback
         stop: null,
       });
 
