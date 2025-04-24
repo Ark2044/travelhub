@@ -203,9 +203,54 @@ export default function TripDetail({ trip, onBackClick }: TripDetailProps) {
                             {paragraph}
                           </h3>
                         </div>
+                      ) : paragraph.trim().startsWith("* ") ||
+                        paragraph.trim().startsWith("- ") ||
+                        paragraph.trim().startsWith("• ") ? (
+                        <ul className="list-disc pl-5 space-y-1 text-gray-700 dark:text-gray-300">
+                          {paragraph
+                            .split("\n")
+                            .filter((line) => line.trim())
+                            .map((line, lineIdx) => (
+                              <li key={lineIdx}>
+                                {line.trim().replace(/^[\*\-\•]\s/, "")}
+                              </li>
+                            ))}
+                        </ul>
                       ) : (
                         <p className="text-gray-700 dark:text-gray-300">
-                          {paragraph}
+                          {paragraph.includes("\n* ") ||
+                          paragraph.includes("\n- ") ||
+                          paragraph.includes("\n• ") ? (
+                            <>
+                              {paragraph
+                                .split(/\n(?=[\*\-\•]\s)/)
+                                .map((part, partIdx) =>
+                                  part.trim().startsWith("* ") ||
+                                  part.trim().startsWith("- ") ||
+                                  part.trim().startsWith("• ") ? (
+                                    <ul
+                                      key={partIdx}
+                                      className="list-disc pl-5 space-y-1 mt-2"
+                                    >
+                                      {part
+                                        .split("\n")
+                                        .filter((line) => line.trim())
+                                        .map((line, lineIdx) => (
+                                          <li key={lineIdx}>
+                                            {line
+                                              .trim()
+                                              .replace(/^[\*\-\•]\s/, "")}
+                                          </li>
+                                        ))}
+                                    </ul>
+                                  ) : (
+                                    <span key={partIdx}>{part}</span>
+                                  )
+                                )}
+                            </>
+                          ) : (
+                            paragraph
+                          )}
                         </p>
                       )}
                     </div>

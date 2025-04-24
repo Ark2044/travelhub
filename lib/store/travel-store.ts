@@ -223,7 +223,10 @@ export const useTravelStore = create<TravelState>()(
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ destination }),
+            body: JSON.stringify({
+              query: destination, // Using destination as the query to fix the error
+              destination,
+            }),
             signal: controller.signal,
           });
 

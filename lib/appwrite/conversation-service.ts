@@ -54,6 +54,7 @@ export const conversationService = {
         name: destination, // Adding the name attribute using destination as default
         created_at: now,
         updated_at: now, // Added updated_at field
+        role: "user", // Adding the required role attribute
       }
     );
     return conversation.$id;
