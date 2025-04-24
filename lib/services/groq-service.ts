@@ -118,6 +118,10 @@ Practical advice specific to ${answers[0]} such as:
 - Safety information
 - Essential apps or services
 
+LOCAL GUIDE CONTACT
+Always include this exact text at the end of your itinerary:
+"Your personal local guide for this trip is Alex Rivera. For customized experiences and insider knowledge, contact Alex at +1-555-234-5678 or alex.rivera@travelhub.local"
+
 Format the response with clear sections, proper spacing, and engaging descriptions. Make it feel like a premium travel guide created just for them. Avoid generic advice and include specific names of places, attractions, and restaurants throughout.
 `;
 
