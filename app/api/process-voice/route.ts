@@ -28,6 +28,10 @@ interface VerboseTranscription {
 const groqApiKey = process.env.GROQ_API_KEY;
 const groq = new Groq({ apiKey: groqApiKey });
 
+// Model definitions
+const TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
+const CONTEXT_MODEL = "compound-beta-mini"; // For context validation and enhancement
+
 // Validators for different question types
 const validateDestination = (text: string): [boolean, string] => {
   if (text.length < 2) {
@@ -51,6 +55,7 @@ const validateDestination = (text: string): [boolean, string] => {
   return [true, ""];
 };
 
+// Other validators remain the same
 const validateBudget = (text: string): [boolean, string] => {
   // Remove common currency symbols and commas
   const cleanText = text.replace(/[$,]/g, "").trim();
@@ -89,6 +94,83 @@ const validators: Record<number, (text: string) => [boolean, string]> = {
   2: validateDates,
   3: validatePeople,
 };
+
+// Function to enhance transcription with compound-beta processing
+async function enhanceTranscription(
+  text: string,
+  questionIndex: number
+): Promise<string> {
+  try {
+    // Get the context for this question
+    let context = "Travel planning conversation.";
+    switch (questionIndex) {
+      case 0:
+        context =
+          "User is specifying a travel destination (city, country, or region).";
+        break;
+      case 1:
+        context = "User is specifying their travel budget in dollars.";
+        break;
+      case 2:
+        context = "User is specifying their travel dates and duration.";
+        break;
+      case 3:
+        context = "User is specifying the number of travelers in their group.";
+        break;
+      case 4:
+        context =
+          "User is describing their travel interests and preferences (culture, food, adventure, relaxation, etc).";
+        break;
+      // Add other question contexts as needed
+    }
+
+    // Use compound-beta-mini for contextual understanding and correction
+    const completion = await groq.chat.completions.create({
+      model: CONTEXT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `You are a travel planning assistant. The user is answering a travel planning questionnaire. 
+          
+Current question context: ${context}
+
+Your task is to correct any potential speech-to-text errors and format the answer appropriately. 
+For destinations, ensure proper capitalization of place names.
+For budgets, ensure they're formatted numerically.
+For dates, ensure they follow a clear format.
+For number of travelers, convert text numbers to digits.
+
+If the transcription is unclear or ambiguous relative to the expected answer type, use your web search tool to resolve ambiguities or verify information.
+
+Respond ONLY with the corrected text, nothing else.`,
+        },
+        {
+          role: "user",
+          content: `Correct this transcription: "${text}"`,
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 150,
+    });
+
+    const enhancedText =
+      completion.choices[0]?.message?.content?.trim() || text;
+
+    // If there were tool calls, log it
+    const executedTools = completion.choices[0]?.message?.executed_tools;
+    if (executedTools && executedTools.length > 0) {
+      console.log(
+        `Tool calls used in transcription enhancement: ${executedTools.length}`
+      );
+    }
+
+    return enhancedText;
+  } catch (error) {
+    console.warn("Failed to enhance transcription:", error);
+    // Fall back to original text if enhancement fails
+    return text;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,18 +217,18 @@ export async function POST(request: NextRequest) {
       // Use Groq's audio transcription capability with enhanced options
       const audioResponse = (await groq.audio.transcriptions.create({
         file: fs.createReadStream(tempFilePath),
-        model: "whisper-large-v3-turbo", // Using faster model with good price/performance
-        language: "en", // Specify English to improve accuracy
+        model: TRANSCRIPTION_MODEL,
+        language: "en",
         prompt:
-          "Travel planning conversation with destinations, budgets, dates, and number of travelers", // Context improves accuracy
-        response_format: "verbose_json", // Get detailed response with timestamps
-        temperature: 0.0, // Use default temperature for best accuracy
-        timestamp_granularities: ["segment"], // Get segment timestamps
+          "Travel planning conversation with destinations, budgets, dates, and number of travelers",
+        response_format: "verbose_json",
+        temperature: 0.0,
+        timestamp_granularities: ["segment"],
       })) as unknown as VerboseTranscription;
 
       transcribedText = audioResponse.text || "";
 
-      // Log transcription confidence metrics for debugging (optional)
+      // Log transcription confidence metrics for debugging
       if (
         process.env.NODE_ENV === "development" &&
         audioResponse.segments &&
@@ -164,6 +246,21 @@ export async function POST(request: NextRequest) {
 
       if (!transcribedText) {
         throw new Error("Failed to transcribe audio");
+      }
+
+      // Enhance transcription with compound-beta if we have a question index
+      if (questionIndex !== undefined && transcribedText) {
+        try {
+          console.log(`Raw transcription: "${transcribedText}"`);
+          transcribedText = await enhanceTranscription(
+            transcribedText,
+            questionIndex
+          );
+          console.log(`Enhanced transcription: "${transcribedText}"`);
+        } catch (enhanceError) {
+          console.error("Error enhancing transcription:", enhanceError);
+          // Continue with original transcription if enhancement fails
+        }
       }
     } catch (groqError) {
       console.error("Groq transcription error:", groqError);
