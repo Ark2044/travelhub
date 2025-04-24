@@ -13,6 +13,7 @@ import {
   CreateUserAccount,
   LoginUserAccount,
 } from "../appwrite/auth-service";
+import { createPersistStorage } from "../utils";
 
 interface AuthState {
   user: Models.User<Models.Preferences> | null;
@@ -25,12 +26,12 @@ interface AuthState {
   signup: (userData: CreateUserAccount) => Promise<boolean>;
   logout: () => Promise<boolean>;
   forgotPassword: (email: string) => Promise<boolean>;
-  resetPassword: (
-    userId: string,
-    secret: string,
-    password: string,
-    confirmPassword: string
-  ) => Promise<boolean>;
+  resetPassword: (params: {
+    userId: string;
+    secret: string;
+    password: string;
+    confirmPassword?: string;
+  }) => Promise<boolean>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -179,60 +180,25 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      resetPassword: async (userId, secret, password, confirmPassword) => {
+      resetPassword: async (params) => {
         try {
+          const {
+            userId,
+            secret,
+            password,
+            confirmPassword = password,
+          } = params;
           await resetPassword(userId, secret, password, confirmPassword);
           return true;
         } catch (error) {
           console.error("Password reset error:", error);
-          return false;
+          throw error; // Re-throw to allow component to handle specific errors
         }
       },
     })),
     {
       name: "auth-storage",
-      storage: createJSONStorage(() => ({
-        getItem: (name) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return null;
-            }
-
-            const value = localStorage.getItem(name);
-            if (!value) return null;
-
-            return JSON.parse(value);
-          } catch (error) {
-            console.error("Error reading from localStorage:", error);
-            return null;
-          }
-        },
-        setItem: (name, value) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return;
-            }
-
-            localStorage.setItem(name, JSON.stringify(value));
-          } catch (error) {
-            console.error("Error saving to localStorage:", error);
-          }
-        },
-        removeItem: (name) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return;
-            }
-
-            localStorage.removeItem(name);
-          } catch (error) {
-            console.error("Error removing from localStorage:", error);
-          }
-        },
-      })),
+      storage: createJSONStorage(() => createPersistStorage()),
       // Only persist certain parts of the state to localStorage
       partialize: (state) => ({
         user: state.user,

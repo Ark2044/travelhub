@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
 import AuthInitializer from "@/components/auth/auth-initializer";
 import ItinerarySavePrompt from "@/components/auth/itinerary-save-prompt";
+import AppwriteInitializer from "@/components/appwrite-initializer";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -31,6 +32,9 @@ export default function RootLayout({
       <body
         className={`${geist.variable} font-sans antialiased min-h-screen flex flex-col`}
       >
+        {/* Initialize Appwrite resources on app startup */}
+        <AppwriteInitializer />
+
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

@@ -43,7 +43,20 @@ export async function createUserAccount(user: CreateUserAccount) {
       );
     }
 
-    throw error;
+    // Password requirements error
+    if (error instanceof Error && error.message.includes("password must be")) {
+      throw new Error(
+        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character."
+      );
+    }
+
+    // Invalid email format
+    if (error instanceof Error && error.message.includes("Invalid email")) {
+      throw new Error("Please enter a valid email address.");
+    }
+
+    // Generic error
+    throw new Error("Failed to create account. Please try again.");
   }
 }
 
@@ -56,7 +69,19 @@ export async function signInAccount(user: LoginUserAccount) {
     return session;
   } catch (error) {
     console.error("Error signing in user:", error);
-    throw error;
+
+    if (
+      error instanceof Error &&
+      error.message.includes("Invalid credentials")
+    ) {
+      throw new Error("Invalid email or password. Please try again.");
+    }
+
+    if (error instanceof Error && error.message.includes("Rate limit")) {
+      throw new Error("Too many login attempts. Please try again later.");
+    }
+
+    throw new Error("Failed to sign in. Please try again later.");
   }
 }
 
@@ -131,7 +156,18 @@ export async function sendPasswordRecovery(email: string) {
     return { success: true };
   } catch (error) {
     console.error("Error sending password recovery:", error);
-    throw error;
+
+    // Check if user does not exist
+    if (
+      error instanceof Error &&
+      error.message.includes("User with the requested email")
+    ) {
+      throw new Error("No account exists with this email address.");
+    }
+
+    throw new Error(
+      "Failed to send password reset email. Please try again later."
+    );
   }
 }
 
@@ -149,6 +185,29 @@ export async function resetPassword(
     return await account.updateRecovery(userId, secret, password);
   } catch (error) {
     console.error("Error resetting password:", error);
-    throw error;
+
+    // Invalid or expired recovery token
+    if (error instanceof Error && error.message.includes("Recovery token")) {
+      throw new Error("Recovery link has expired. Please request a new one.");
+    }
+
+    // Password requirements error
+    if (error instanceof Error && error.message.includes("password must be")) {
+      throw new Error(
+        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character."
+      );
+    }
+
+    throw new Error("Failed to reset password. Please try again.");
+  }
+}
+
+// Function to update user profile
+export async function updateUserProfile(name: string) {
+  try {
+    return await account.updateName(name);
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    throw new Error("Failed to update profile. Please try again.");
   }
 }

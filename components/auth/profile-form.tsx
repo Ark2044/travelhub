@@ -1,11 +1,13 @@
-import { useState } from "react";
+"use client";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import Link from "next/link";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { account } from "@/lib/appwrite/config";
+import { updateUserProfile } from "@/lib/appwrite/auth-service";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser } from "@fortawesome/free-solid-svg-icons";
@@ -24,6 +26,7 @@ export default function ProfileForm() {
     register,
     handleSubmit,
     formState: { errors },
+    reset,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -31,21 +34,49 @@ export default function ProfileForm() {
     },
   });
 
+  // Update form when user data changes (e.g., on initial load)
+  useEffect(() => {
+    if (user?.name) {
+      reset({ name: user.name });
+    }
+  }, [user, reset]);
+
   const onSubmit = async (data: FormData) => {
     setIsUpdating(true);
 
     try {
-      const updatedUser = await account.updateName(data.name);
+      // No need to update if name hasn't changed
+      if (data.name === user?.name) {
+        toast.info("No changes to save");
+        setIsUpdating(false);
+        return;
+      }
+
+      const updatedUser = await updateUserProfile(data.name);
       // Update the user in the store
       useAuthStore.setState({ user: updatedUser });
       toast.success("Profile updated successfully");
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to update profile");
+      }
     } finally {
       setIsUpdating(false);
     }
   };
+
+  if (!user) {
+    return (
+      <div className="max-w-md w-full mx-auto p-6 bg-white dark:bg-gray-900 rounded-lg shadow-lg">
+        <div className="text-center">
+          <p>Loading your profile information...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md w-full mx-auto space-y-8 p-6 bg-white dark:bg-gray-900 rounded-lg shadow-lg">
@@ -99,13 +130,11 @@ export default function ProfileForm() {
       <div className="border-t border-gray-200 dark:border-gray-800 pt-6">
         <h2 className="text-xl font-semibold mb-4">Security</h2>
         <div className="space-y-4">
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => (window.location.href = "/reset-password")}
-          >
-            Change Password
-          </Button>
+          <Link href="/forgot-password">
+            <Button variant="outline" className="w-full">
+              Change Password
+            </Button>
+          </Link>
         </div>
       </div>
     </div>

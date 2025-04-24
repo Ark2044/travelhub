@@ -6,6 +6,7 @@ import {
   Message,
   TravelPreference,
 } from "../appwrite/conversation-service";
+import { createPersistStorage } from "../utils";
 
 // Define types for our questions
 export const QUESTIONS = [
@@ -76,6 +77,28 @@ export interface TravelState {
     | undefined
   >;
 }
+
+// Helper function to trim large data when approaching localStorage limits
+const trimLargeData = (data: any) => {
+  // Only apply trimming if the data exists and exceeds certain thresholds
+  const trimmed = { ...data };
+
+  // Trim generated itinerary if it's too large
+  if (
+    typeof trimmed.generatedItinerary === "string" &&
+    trimmed.generatedItinerary.length > 5000
+  ) {
+    trimmed.generatedItinerary =
+      trimmed.generatedItinerary.substring(0, 5000) + "... (truncated)";
+  }
+
+  // Trim image data if necessary
+  if (Array.isArray(trimmed.images) && trimmed.images.length > 3) {
+    trimmed.images = trimmed.images.slice(0, 3);
+  }
+
+  return trimmed;
+};
 
 // Create Zustand store with Immer and Persist middleware
 export const useTravelStore = create<TravelState>()(
@@ -313,106 +336,14 @@ export const useTravelStore = create<TravelState>()(
     })),
     {
       name: "travel-planner-storage",
-      storage: createJSONStorage(() => ({
-        getItem: (name) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return null;
-            }
-
-            const value = localStorage.getItem(name);
-            if (!value) return null;
-
-            // Parse and check size
-            const parsed = JSON.parse(value);
-            const storageSizeMB = (value.length * 2) / (1024 * 1024);
-
-            // Log size info to help with debugging (5MB is a common limit)
-            if (storageSizeMB > 2) {
-              console.warn(
-                `TravelHub storage reaching ${storageSizeMB.toFixed(
-                  2
-                )}MB (browser limit 5MB)`
-              );
-            }
-
-            return parsed;
-          } catch (error) {
-            console.error("Error reading from localStorage:", error);
-            return null;
-          }
-        },
-        setItem: (name, value) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return;
-            }
-
-            // Convert to string to check size
-            const stringValue = JSON.stringify(value);
-            const storageSizeMB = (stringValue.length * 2) / (1024 * 1024);
-
-            // If we're approaching local storage limits (5MB), trim data
-            if (storageSizeMB > 4) {
-              // Create a trimmed version with essential data only
-              // First convert to unknown, then to Record type to avoid direct string conversion error
-              const valueObj = value as unknown as {
-                generatedItinerary?: string;
-                images?: { url: string; thumb: string; alt: string; credit: string; category: string }[];
-              };
-              const trimmedValue = {
-                ...valueObj,
-                // Keep only minimal data needed for user experience
-                generatedItinerary:
-                  typeof valueObj.generatedItinerary === "string"
-                    ? valueObj.generatedItinerary.substring(0, 1000) +
-                      "... (trimmed)"
-                    : "",
-                images: Array.isArray(valueObj.images)
-                  ? valueObj.images.slice(0, 3)
-                  : [],
-              };
-              localStorage.setItem(name, JSON.stringify(trimmedValue));
-              console.warn(
-                `TravelHub storage trimmed to prevent browser limits (${storageSizeMB.toFixed(
-                  2
-                )}MB)`
-              );
-              return;
-            }
-
-            localStorage.setItem(name, stringValue);
-          } catch (error) {
-            console.error("Error saving to localStorage:", error);
-          }
-        },
-        removeItem: (name) => {
-          try {
-            // Check if we're in a browser environment
-            if (typeof window === "undefined") {
-              return;
-            }
-
-            localStorage.removeItem(name);
-          } catch (error) {
-            console.error("Error removing from localStorage:", error);
-          }
-        },
-      })),
+      storage: createJSONStorage(() => createPersistStorage(trimLargeData)),
       partialize: (state) => ({
         currentConversationId: state.currentConversationId,
         currentDestination: state.currentDestination,
         answers: state.answers,
         currentQuestion: state.currentQuestion,
         isVoiceEnabled: state.isVoiceEnabled,
-        // Limit what we store in localStorage to prevent size issues
-        generatedItinerary: state.generatedItinerary
-          ? state.generatedItinerary.length > 5000
-            ? state.generatedItinerary.substring(0, 5000) + "... (truncated)"
-            : state.generatedItinerary
-          : "",
+        generatedItinerary: state.generatedItinerary,
       }),
     }
   )

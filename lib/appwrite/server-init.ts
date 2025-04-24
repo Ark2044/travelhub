@@ -9,24 +9,22 @@ let isInitialized = false;
  * Use in server components or server-side API routes
  */
 export const ensureAppwriteInitialized = async () => {
-  // Skip if already initialized or not in development mode
+  // Skip if already initialized
   if (isInitialized) {
     return true;
   }
 
-  // Only auto-initialize in development
-  if (process.env.NODE_ENV === "development") {
-    console.log("Auto-initializing Appwrite resources in development mode...");
-    const result = await initializeAppwrite();
+  console.log("Initializing Appwrite resources...");
+  const result = await initializeAppwrite();
 
-    if (result) {
-      isInitialized = true;
-    }
-
-    return result;
+  if (result) {
+    isInitialized = true;
+    console.log("Appwrite initialization complete");
+  } else {
+    console.error("Failed to initialize Appwrite resources");
   }
 
-  return false;
+  return result;
 };
 
 // Execute initialization when this module is imported in development

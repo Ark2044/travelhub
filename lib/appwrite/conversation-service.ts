@@ -11,7 +11,9 @@ import {
 export interface Conversation {
   id?: string;
   destination: string;
+  name?: string; // Adding name field to the interface
   created_at?: Date;
+  updated_at?: Date; // Added updated_at field
 }
 
 export interface Message {
@@ -20,6 +22,7 @@ export interface Message {
   content: string;
   is_user: boolean;
   created_at?: Date;
+  updated_at?: Date; // Added updated_at field
 }
 
 export interface TravelPreference {
@@ -34,18 +37,23 @@ export interface TravelPreference {
   pace_preference: string;
   transport_preference: string;
   must_see_places: string;
+  updated_at?: Date; // Added updated_at field
 }
 
 export const conversationService = {
   // Create new conversation
-  async create(destination: string): Promise<string> {
+  async create(destination: string, user_id: string): Promise<string> {
+    const now = new Date();
     const conversation = await databases.createDocument(
       databaseId,
       conversationCollectionId,
       ID.unique(),
       {
         destination,
-        created_at: new Date(),
+        user_id,
+        name: destination, // Adding the name attribute using destination as default
+        created_at: now,
+        updated_at: now, // Added updated_at field
       }
     );
     return conversation.$id;
@@ -77,6 +85,7 @@ export const conversationService = {
     content: string,
     is_user: boolean
   ): Promise<string> {
+    const now = new Date();
     const message = await databases.createDocument(
       databaseId,
       messageCollectionId,
@@ -85,7 +94,8 @@ export const conversationService = {
         conversation_id,
         content,
         is_user,
-        created_at: new Date(),
+        created_at: now,
+        updated_at: now, // Added updated_at field
       }
     );
     return message.$id;
@@ -109,16 +119,59 @@ export const conversationService = {
     conversation_id: string,
     preferences: Omit<TravelPreference, "id" | "conversation_id">
   ): Promise<string> {
-    const preference = await databases.createDocument(
-      databaseId,
-      preferenceCollectionId,
-      ID.unique(),
-      {
-        conversation_id,
-        ...preferences,
+    const now = new Date();
+
+    // First check if there's already a preference document for this conversation
+    try {
+      const existingPrefs = await this.getPreferences(conversation_id);
+
+      // If there is an existing document, update it instead of creating a new one
+      if (existingPrefs && existingPrefs.id) {
+        const updatedPrefs = await databases.updateDocument(
+          databaseId,
+          preferenceCollectionId,
+          existingPrefs.id,
+          {
+            ...preferences,
+            updated_at: now,
+          }
+        );
+        return updatedPrefs.$id;
       }
-    );
-    return preference.$id;
+    } catch (error) {
+      console.log(
+        "No existing preferences found, creating new document",
+        error
+      );
+    }
+
+    // Create a new document with safe parameters
+    try {
+      const preferenceData = {
+        conversation_id,
+        destination: preferences.destination, // Add the destination field
+        budget: preferences.budget,
+        dates: preferences.dates,
+        num_travelers: preferences.num_travelers,
+        interests: preferences.interests,
+        accommodation_preference: preferences.accommodation_preference,
+        pace_preference: preferences.pace_preference,
+        transport_preference: preferences.transport_preference,
+        must_see_places: preferences.must_see_places,
+        updated_at: now,
+      };
+
+      const preference = await databases.createDocument(
+        databaseId,
+        preferenceCollectionId,
+        ID.unique(),
+        preferenceData
+      );
+      return preference.$id;
+    } catch (error) {
+      console.error("Error storing preferences:", error);
+      throw error;
+    }
   },
 
   // Get preferences for a conversation

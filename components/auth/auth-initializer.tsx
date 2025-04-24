@@ -18,6 +18,10 @@ export default function AuthInitializer({
       try {
         // Attempt to check authentication status
         const isAuthenticated = await checkAuthStatus();
+        console.log("Auth initializer - Auth status:", isAuthenticated);
+
+        // Get the latest state after the check
+        const currentUser = useAuthStore.getState().user;
 
         // If we detect auth issues, show a helpful message
         if (!isAuthenticated && localStorage.getItem("auth-storage")) {
@@ -26,8 +30,31 @@ export default function AuthInitializer({
             duration: 5000,
             id: "session-expired",
           });
+
           // Clear any stale auth data
           localStorage.removeItem("auth-storage");
+          document.cookie =
+            "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        } else if (isAuthenticated && currentUser) {
+          // Ensure the auth cookie is updated with the latest state
+          const expirationDate = new Date();
+          expirationDate.setDate(expirationDate.getDate() + 7);
+
+          const authData = JSON.stringify({
+            state: {
+              user: currentUser,
+              isAuthenticated: true,
+            },
+          });
+
+          // Set both localStorage and cookie for redundancy
+          localStorage.setItem("auth-storage", authData);
+
+          document.cookie = `auth-storage=${encodeURIComponent(
+            authData
+          )}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+
+          console.log("Auth cookie refreshed for user:", currentUser.$id);
         }
       } catch (error) {
         console.error("Auth initialization error:", error);

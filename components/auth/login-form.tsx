@@ -19,6 +19,7 @@ type FormData = z.infer<typeof formSchema>;
 
 export default function LoginForm() {
   const login = useAuthStore((state) => state.login);
+  const user = useAuthStore((state) => state.user);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -46,7 +47,13 @@ export default function LoginForm() {
       });
 
       if (success) {
-        router.push("/");
+        // If login is successful and we have a user with ID, redirect to user profile
+        // Otherwise go to home page
+        if (user && user.$id) {
+          router.push(`/user/${user.$id}`);
+        } else {
+          router.push("/");
+        }
       } else {
         setError("Login failed. Please check your credentials.");
       }

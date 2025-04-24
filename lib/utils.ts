@@ -6,52 +6,104 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Utility function to check and fix common Appwrite authentication issues
- * Call this when encountering authentication errors
+ * Creates a consistent storage configuration for Zustand persist middleware
+ * @param trimFunction Optional function to trim data when storage is getting large
  */
-export const checkAndFixAuthIssues = () => {
-  try {
-    // Check if we're in a browser environment
-    if (typeof window === "undefined") return false;
-
-    // Check for stale or corrupted auth data
-    const authStorage = localStorage.getItem("auth-storage");
-
-    if (authStorage) {
+export const createPersistStorage = (trimFunction?: (data: any) => any) => {
+  return {
+    getItem: (name: string) => {
       try {
-        // Try parsing the auth storage data
-        const parsedAuth = JSON.parse(authStorage);
-
-        // If it's invalid or missing critical parts, remove it
-        if (!parsedAuth || !parsedAuth.state || !parsedAuth.state.user) {
-          console.log("Removing invalid auth storage data");
-          localStorage.removeItem("auth-storage");
-          return true;
+        // Check if we're in a browser environment
+        if (typeof window === "undefined") {
+          return null;
         }
-      } catch (e) {
-        // If JSON parsing fails, storage is corrupted
-        console.log("Removing corrupted auth storage data", e);
-        localStorage.removeItem("auth-storage");
-        return true;
-      }
-    }
 
-    // Check for stale travel session data too
-    const travelStorage = localStorage.getItem("travel-planner-storage");
-    if (travelStorage && typeof travelStorage === "string") {
+        const value = localStorage.getItem(name);
+        if (!value) return null;
+
+        // Parse and check size
+        const parsed = JSON.parse(value);
+        const storageSizeMB = (value.length * 2) / (1024 * 1024);
+
+        // Log size info to help with debugging (5MB is a common limit)
+        if (storageSizeMB > 2) {
+          console.warn(
+            `TravelHub storage approaching ${storageSizeMB.toFixed(
+              2
+            )}MB (browser limit 5MB)`
+          );
+        }
+
+        return parsed;
+      } catch (error) {
+        console.error("Error reading from localStorage:", error);
+        return null;
+      }
+    },
+    setItem: (name: string, value: any) => {
       try {
-        // Attempt to parse it
-        JSON.parse(travelStorage);
-      } catch (e) {
-        // If parsing fails, remove the corrupted data
-        console.log("Removing corrupted travel planner storage data", e);
-        localStorage.removeItem("travel-planner-storage");
-      }
-    }
+        // Check if we're in a browser environment
+        if (typeof window === "undefined") {
+          return;
+        }
 
-    return false;
-  } catch (error) {
-    console.error("Error checking auth issues:", error);
-    return false;
-  }
+        // Convert to string to check size
+        const stringValue = JSON.stringify(
+          trimFunction ? trimFunction(value) : value
+        );
+        const storageSizeMB = (stringValue.length * 2) / (1024 * 1024);
+
+        // If we're approaching local storage limits (5MB), trim data
+        if (storageSizeMB > 4 && !trimFunction) {
+          console.warn(
+            `TravelHub storage size (${storageSizeMB.toFixed(
+              2
+            )}MB) approaching browser limits`
+          );
+        }
+
+        localStorage.setItem(name, stringValue);
+
+        // Also sync to cookies for auth state (for middleware/server access)
+        if (name.includes("auth")) {
+          syncToCookies(name, value);
+        }
+      } catch (error) {
+        console.error("Error saving to localStorage:", error);
+      }
+    },
+    removeItem: (name: string) => {
+      try {
+        // Check if we're in a browser environment
+        if (typeof window === "undefined") {
+          return;
+        }
+
+        localStorage.removeItem(name);
+
+        // Also remove from cookies if auth related
+        if (name.includes("auth")) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+      } catch (error) {
+        console.error("Error removing from localStorage:", error);
+      }
+    },
+  };
 };
+
+/**
+ * Syncs state to cookies for server-side authentication in middleware
+ */
+export function syncToCookies(name: string, value: unknown) {
+  if (typeof window === "undefined") return;
+
+  // Set cookie expiration to 7 days
+  const expirationDate = new Date();
+  expirationDate.setDate(expirationDate.getDate() + 7);
+
+  // Set the cookie with the authentication state
+  document.cookie = `${name}=${encodeURIComponent(
+    JSON.stringify(value)
+  )}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+}

@@ -1,12 +1,12 @@
 "use client";
 
-import React from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import Link from "next/link";
+import { Fragment } from "react";
 
 interface HeroProps {
   title: string;
@@ -38,7 +38,7 @@ export default function Hero({
     ? title.split(highlightedWord).map((part, i, arr) => {
         if (i === arr.length - 1) return part;
         return (
-          <React.Fragment key={i}>
+          <Fragment key={i}>
             {part}
             <span className="text-emerald-400 relative">
               {highlightedWord}
@@ -49,7 +49,7 @@ export default function Hero({
                 transition={{ delay: 0.5, duration: 0.8 }}
               />
             </span>
-          </React.Fragment>
+          </Fragment>
         );
       })
     : [title];

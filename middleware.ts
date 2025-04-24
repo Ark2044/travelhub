@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Define routes that don't need authentication
+// Define public routes that don't require authentication
 const publicRoutes = [
   "/login",
   "/signup",
@@ -9,17 +9,31 @@ const publicRoutes = [
   "/reset-password",
 ];
 
-// Define routes that are always accessible
+// Define routes that are always accessible regardless of auth state
 const alwaysAccessibleRoutes = [
   "/",
   "/api/generate-itinerary",
   "/api/process-voice",
   "/api/search-images",
   "/api/validate",
+  "/api/init-appwrite",
 ];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Skip middleware for non-page routes (static files, etc.)
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/fonts") ||
+    pathname.startsWith("/icons") ||
+    pathname.startsWith("/images") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt"
+  ) {
+    return NextResponse.next();
+  }
 
   // Check if the route is public or always accessible
   const isPublicRoute = publicRoutes.some((route) =>
@@ -29,35 +43,34 @@ export function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith("/api/")
   );
 
-  // Get the authentication session
-  const authSession = request.cookies.get("appwrite-session")?.value;
-  const isAuthenticated = !!authSession;
+  // Get the authentication state
+  const authStore = request.cookies.get("auth-storage")?.value;
+  let isAuthenticated = false;
 
-  // If route is public and user is authenticated, redirect to home page
+  if (authStore) {
+    try {
+      const parsedAuthStore = JSON.parse(decodeURIComponent(authStore));
+      isAuthenticated =
+        parsedAuthStore.state && parsedAuthStore.state.isAuthenticated === true;
+    } catch (e) {
+      console.error("Error parsing auth store:", e);
+    }
+  }
+
+  // If trying to access a public route while authenticated, redirect to home
   if (isPublicRoute && isAuthenticated) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // If route requires authentication and user is not authenticated, redirect to login page
+  // If trying to access a protected route while not authenticated, redirect to login
   if (!isPublicRoute && !isAlwaysAccessible && !isAuthenticated) {
-    const redirectUrl = new URL("/login", request.url);
-    redirectUrl.searchParams.set("callbackUrl", encodeURI(request.url));
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return NextResponse.next();
 }
 
-// Configure matcher for the middleware
+// Define matcher to specify which routes the middleware should run on
 export const config = {
-  matcher: [
-    /*
-     * Match all routes except:
-     * 1. /api/auth routes (NextAuth.js)
-     * 2. /_next (Next.js internals)
-     * 3. /fonts, /icons, /images (static files)
-     * 4. /favicon.ico, /sitemap.xml, /robots.txt (SEO files)
-     */
-    "/((?!_next/static|_next/image|fonts/|icons/|images/|favicon.ico|sitemap.xml|robots.txt).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image).*)"],
 };

@@ -14,7 +14,6 @@ export default function ItinerarySavePrompt() {
   const {
     generatedItinerary,
     answers,
-    currentDestination,
     currentConversationId,
     setCurrentConversation,
   } = useTravelStore();
@@ -32,14 +31,20 @@ export default function ItinerarySavePrompt() {
 
   const handleSaveItinerary = async () => {
     try {
+      if (!user || !user.$id) {
+        toast.error("User information is missing. Please log in again.");
+        return;
+      }
+
       // Save itinerary to the user's account
       const conversationId = await conversationService.create(
-        currentDestination
+        answers[0], // Using answers[0] which contains the destination
+        user.$id
       );
 
-      // Store preferences
+      // Store preferences with the destination field included
       await conversationService.storePreferences(conversationId, {
-        destination: answers[0],
+        destination: answers[0], // Add destination here to fix the TypeScript error
         budget: answers[1],
         dates: answers[2],
         num_travelers: answers[3],
@@ -89,8 +94,8 @@ export default function ItinerarySavePrompt() {
         </button>
       </div>
       <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-        Welcome {user?.name}! We noticed you&apos;ve created an itinerary. Would you
-        like to save it to your account to access it later?
+        Welcome {user?.name}! We noticed you&apos;ve created an itinerary. Would
+        you like to save it to your account to access it later?
       </p>
       <div className="flex gap-2">
         <button

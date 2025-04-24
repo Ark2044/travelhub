@@ -39,7 +39,7 @@ const COLLECTION_SCHEMAS: Record<string, CollectionSchema> = {
   conversations: {
     collectionId: conversationCollectionId,
     name: "conversations",
-    permissions: ["read('any')", "write('role:member')"],
+    permissions: ['read("any")', 'write("users")'],
     attributes: [
       {
         type: "string",
@@ -64,7 +64,7 @@ const COLLECTION_SCHEMAS: Record<string, CollectionSchema> = {
   messages: {
     collectionId: messageCollectionId,
     name: "messages",
-    permissions: ["read('any')", "write('role:member')"],
+    permissions: ['read("any")', 'write("users")'],
     attributes: [
       {
         type: "string",
@@ -101,7 +101,7 @@ const COLLECTION_SCHEMAS: Record<string, CollectionSchema> = {
   preferences: {
     collectionId: preferenceCollectionId,
     name: "preferences",
-    permissions: ["read('any')", "write('role:member')"],
+    permissions: ['read("any")', 'write("users")'],
     attributes: [
       {
         type: "string",
@@ -188,14 +188,26 @@ export const initializeDatabase = async (): Promise<boolean> => {
     const client = createServerClient();
     const databases = new Databases(client);
 
-    // Ensure database exists
+    // First, list all databases to check if our database already exists
+    let databaseExists = false;
     try {
-      await databases.get(databaseId);
-      console.log("Database already exists");
-    } catch {
-      console.log("Creating database...");
-      await databases.create(databaseId, "TravelHub Database");
-      console.log("Database created");
+      const { databases: dbList } = await databases.list();
+      databaseExists = dbList.some((db) => db.$id === databaseId);
+
+      if (databaseExists) {
+        console.log("Database already exists");
+      } else {
+        // Only attempt to create if we confirmed it doesn't exist
+        console.log("Creating database...");
+        await databases.create(databaseId, "TravelHub Database");
+        console.log("Database created");
+      }
+    } catch (error) {
+      console.error("Database check/create failed:", error);
+      // Try to continue with existing database even if we can't create a new one
+      console.log(
+        "Attempting to continue with existing database if available..."
+      );
     }
 
     // Loop through each schema

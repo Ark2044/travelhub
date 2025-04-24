@@ -218,7 +218,7 @@ export default function Navbar({
                     >
                       <div className="py-1">
                         <Link
-                          href="/profile"
+                          href={user?.$id ? `/user/${user.$id}` : "/profile"}
                           className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                           onClick={() => setShowUserDropdown(false)}
                         >
@@ -384,7 +384,7 @@ export default function Navbar({
                         </div>
                       </div>
                       <Link
-                        href="/profile"
+                        href={user?.$id ? `/user/${user.$id}` : "/profile"}
                         className={`text-lg px-4 py-3 ${
                           transparent
                             ? "text-white hover:bg-white/10"

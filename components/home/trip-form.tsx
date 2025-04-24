@@ -82,7 +82,6 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
   const [validationMessage, setValidationMessage] = useState("");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [loadingState, setLoadingState] = useState<
     "idle" | "validating" | "submitting" | "processing"
@@ -159,10 +158,8 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
 
       // Validate input
       setIsTyping(true);
-      setIsValidating(true);
       setLoadingState("submitting");
       const isValid = await validateInput(currentInput);
-      setIsValidating(false);
       setIsTyping(false);
 
       if (!isValid) {
@@ -460,6 +457,18 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
                         </p>
                       </motion.div>
                     )}
+                    {networkError && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <p className="text-amber-600 text-sm px-2 py-1 bg-amber-50 dark:bg-amber-900/20 rounded border-l-2 border-amber-500">
+                          {networkError}
+                        </p>
+                      </motion.div>
+                    )}
                   </AnimatePresence>
                 </div>
 
@@ -511,7 +520,7 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
             onClick={() =>
               currentQuestion > 0 && setCurrentQuestion(currentQuestion - 1)
             }
-            disabled={currentQuestion === 0}
+            disabled={currentQuestion === 0 || loadingState !== "idle"}
             className="px-6 py-3 border-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 rounded-lg shadow-sm"
             aria-label="Go back to previous question"
           >
@@ -522,7 +531,12 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
           <Button
             type="button"
             onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
-            disabled={isSubmitting || isTyping || !currentInput.trim()}
+            disabled={
+              isSubmitting ||
+              isTyping ||
+              !currentInput.trim() ||
+              loadingState !== "idle"
+            }
             className={`px-6 py-3 ${
               currentQuestion < QUESTIONS.length - 1
                 ? "bg-blue-600 hover:bg-blue-700"
@@ -534,13 +548,29 @@ export default function TripForm({ onFormComplete }: TripFormProps) {
                 : "Generate your travel itinerary"
             }
           >
-            {isTyping ? (
+            {loadingState === "validating" ? (
               <>
                 <FontAwesomeIcon
                   icon={faSpinner}
                   className="mr-2 animate-spin"
                 />
                 Validating...
+              </>
+            ) : loadingState === "submitting" ? (
+              <>
+                <FontAwesomeIcon
+                  icon={faSpinner}
+                  className="mr-2 animate-spin"
+                />
+                Submitting...
+              </>
+            ) : loadingState === "processing" ? (
+              <>
+                <FontAwesomeIcon
+                  icon={faSpinner}
+                  className="mr-2 animate-spin"
+                />
+                Processing...
               </>
             ) : currentQuestion < QUESTIONS.length - 1 ? (
               <>
