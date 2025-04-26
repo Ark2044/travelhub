@@ -6,7 +6,7 @@ export const runtime = "edge";
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const { query, destination, referenceImageUrl } = await request.json();
+    const { query, destination } = await request.json();
 
     if (!query) {
       return NextResponse.json(
@@ -15,12 +15,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Search for images, potentially using vision capabilities if referenceImageUrl is provided
-    const images = await searchImages(
-      query,
-      destination || "",
-      referenceImageUrl
-    );
+    // Search for images using Unsplash API
+    const images = await searchImages(query, destination || "");
 
     return NextResponse.json({ images });
   } catch (error) {

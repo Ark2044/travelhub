@@ -196,10 +196,10 @@ export const useTravelStore = create<TravelState>()(
           state.isVoiceEnabled = enabled;
         }),
 
-      setReferenceImageUrl: (url) =>
-        set((state) => {
-          state.referenceImageUrl = url;
-        }),
+      setReferenceImageUrl: () => {
+        // Keeping this function but making it a no-op
+        console.log("Vision features have been removed");
+      },
 
       resetCurrentSession: () =>
         set((state) => {
@@ -215,7 +215,7 @@ export const useTravelStore = create<TravelState>()(
           state.referenceImageUrl = null;
         }),
 
-      fetchDestinationImages: async (customReferenceImageUrl?: string) => {
+      fetchDestinationImages: async () => {
         const state = get();
         const destination = state.currentDestination;
         if (!destination) return;
@@ -226,37 +226,86 @@ export const useTravelStore = create<TravelState>()(
           });
 
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased for multiple requests)
 
-          // Use either the provided custom reference image or the stored one
-          const referenceImageUrl =
-            customReferenceImageUrl || state.referenceImageUrl;
+          // Create an array of specific queries related to the destination
+          const queries = [
+            destination, // Main destination image
+            `${destination} landmarks`,
+            `${destination} culture`,
+            `${destination} landscape`,
+            `${destination} food`,
+          ];
 
-          const response = await fetch("/api/search-images", {
+          // Fetch images for the primary destination query first
+          const mainResponse = await fetch("/api/search-images", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              query: destination,
-              destination,
-              referenceImageUrl: referenceImageUrl || undefined,
+              query: queries[0],
+              destination: destination,
             }),
             signal: controller.signal,
           });
 
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
+          if (!mainResponse.ok) {
+            const errorData = await mainResponse.json().catch(() => ({}));
             throw new Error(
-              errorData.error || `Failed to fetch images (${response.status})`
+              errorData.error ||
+                `Failed to fetch images (${mainResponse.status})`
             );
           }
 
-          const data = await response.json();
+          const mainData = await mainResponse.json();
+          let allImages = mainData.images || [];
+
+          // Only fetch additional category images if we didn't get enough from the main query
+          if (allImages.length < 5) {
+            // Try to fetch one additional category
+            const additionalCategoryIndex =
+              Math.floor(Math.random() * (queries.length - 1)) + 1;
+            try {
+              const additionalResponse = await fetch("/api/search-images", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  query: queries[additionalCategoryIndex],
+                  destination: destination,
+                }),
+                signal: controller.signal,
+              });
+
+              if (additionalResponse.ok) {
+                const additionalData = await additionalResponse.json();
+                if (additionalData.images && additionalData.images.length) {
+                  allImages = [...allImages, ...additionalData.images];
+                }
+              }
+            } catch (additionalError) {
+              console.log(
+                "Error fetching additional category images:",
+                additionalError
+              );
+              // Continue with what we have
+            }
+          }
+
+          clearTimeout(timeoutId);
+
+          // Deduplicate images based on URL
+          const uniqueUrls = new Set<string>();
+          const uniqueImages = allImages.filter((img: TravelImage) => {
+            if (uniqueUrls.has(img.url)) return false;
+            uniqueUrls.add(img.url);
+            return true;
+          });
+
           set((state) => {
-            state.images = data.images || [];
+            state.images = uniqueImages || [];
             state.isSubmitting = false;
           });
         } catch (error) {
@@ -270,9 +319,9 @@ export const useTravelStore = create<TravelState>()(
                   url: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1",
                   thumb:
                     "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=200",
-                  alt: "Travel destination",
+                  alt: destination + " travel destination",
                   credit: "Unsplash",
-                  category: "landscape",
+                  category: "Landscape",
                 },
               ];
             }
@@ -281,15 +330,15 @@ export const useTravelStore = create<TravelState>()(
         }
       },
 
-      fetchSimilarImages: async (referenceImageUrl: string) => {
+      fetchSimilarImages: async () => {
+        // This function is now simplified to just call fetchDestinationImages
         try {
           set((state) => {
             state.isSubmitting = true;
-            state.referenceImageUrl = referenceImageUrl;
           });
 
-          // Call the regular fetch function with the reference image
-          await get().fetchDestinationImages(referenceImageUrl);
+          // Call the regular fetch function without reference image
+          await get().fetchDestinationImages();
         } catch (error) {
           console.error("Error fetching similar images:", error);
           set((state) => {
@@ -308,55 +357,69 @@ export const useTravelStore = create<TravelState>()(
           });
 
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for AI generation
+          // Increased to 90 seconds timeout for AI generation - some complex itineraries might take longer
+          const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.log("Aborting itinerary generation due to timeout");
+          }, 90000);
 
-          const response = await fetch("/api/generate-itinerary", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              destination: state.currentDestination,
-              answers: state.answers,
-            }),
-            signal: controller.signal,
-          });
+          try {
+            const response = await fetch("/api/generate-itinerary", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                destination: state.currentDestination,
+                answers: state.answers,
+              }),
+              signal: controller.signal,
+            });
 
-          clearTimeout(timeoutId);
+            // Clear timeout as soon as we get a response
+            clearTimeout(timeoutId);
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(
-              errorData.error ||
-                errorData.details ||
-                `Failed to generate itinerary (${response.status})`
-            );
-          }
-
-          const data = await response.json();
-
-          set((state) => {
-            state.generatedItinerary = data.itinerary || "";
-            if (data.conversationId) {
-              state.currentConversationId = data.conversationId;
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(
+                errorData.error ||
+                  errorData.details ||
+                  `Failed to generate itinerary (${response.status})`
+              );
             }
-            state.isGenerating = false;
-          });
 
-          return {
-            success: true,
-            conversationId: data.conversationId,
-          };
+            const data = await response.json();
+
+            set((state) => {
+              state.generatedItinerary = data.itinerary || "";
+              if (data.conversationId) {
+                state.currentConversationId = data.conversationId;
+              }
+              state.isGenerating = false;
+            });
+
+            return {
+              success: true,
+              conversationId: data.conversationId,
+            };
+          } finally {
+            // Ensure timeout is cleared in all cases
+            clearTimeout(timeoutId);
+          }
         } catch (error) {
           console.error("Error generating travel plan:", error);
 
+          // Specific handling for AbortError
+          const isAbortError =
+            (error instanceof DOMException && error.name === "AbortError") ||
+            (error instanceof Error && error.name === "AbortError");
+
           // Show a more user-friendly error message while keeping the app usable
-          const errorMessage =
-            error instanceof Error
-              ? error.message.includes("abort")
-                ? "Request timed out. Please try again."
-                : error.message
-              : "Failed to generate itinerary";
+          const errorMessage = isAbortError
+            ? "It's taking longer than expected to create your travel plan. This could be due to server load or the complexity of your trip. Please try again or consider simplifying your travel parameters."
+            : error instanceof Error
+            ? error.message
+            : "Failed to generate itinerary";
 
           set((state) => {
             state.isGenerating = false;

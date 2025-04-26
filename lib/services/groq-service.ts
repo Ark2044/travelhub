@@ -1,5 +1,23 @@
 import Groq from "groq-sdk";
 
+// Define interfaces for error types
+interface GroqErrorResponse {
+  status?: number;
+  message?: string;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
+  headers?: Record<string, string>;
+}
+
+interface GroqStreamError extends GroqErrorResponse {
+  isStreamError?: boolean;
+}
+
+type GroqApiError = Error & GroqErrorResponse;
+
 const groqApiKey = process.env.GROQ_API_KEY;
 // Use compound-beta for real-time information and standard models as fallbacks
 const PRIMARY_MODEL = "compound-beta";
@@ -8,6 +26,13 @@ const FALLBACK_MODEL = "gemma2-9b-it";
 
 // Initialize Groq client
 const groq = new Groq({ apiKey: groqApiKey });
+
+// Add retry configuration
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
+
+// Sleep function for retry delays
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Build prompt for AI with improved instructions for better itineraries
 export const buildPrompt = (answers: string[]) => {
@@ -57,6 +82,7 @@ export const buildPrompt = (answers: string[]) => {
 
   // Create a more structured prompt optimized for compound-beta
   prompt = `
+
 Create a comprehensive ${durationDays}-day travel itinerary for ${destination} for travel dates ${travelDates} with budget ${budget}.
 
 I need you to use your web search tool to gather current information about:
@@ -95,30 +121,64 @@ export const generateItinerary = async (answers: string[]): Promise<string> => {
     // Try compound-beta model first for real-time information
     try {
       console.log("Using compound-beta model with web search capabilities");
-      const completion = await groq.chat.completions.create({
-        model: PRIMARY_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 1200, // Increased for more comprehensive responses with real-time data
-        stop: null,
-      });
 
-      const content = completion.choices[0]?.message?.content;
-      const executedTools = completion.choices[0]?.message?.executed_tools;
+      // Add retry logic for transient server errors
+      let lastError: GroqApiError | null = null;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(
+              `Retry attempt ${attempt} for primary model after delay...`
+            );
+            await sleep(RETRY_DELAY_MS * attempt); // Exponential backoff
+          }
 
-      if (executedTools && executedTools.length > 0) {
-        console.log(`Tool calls used: ${executedTools.length}`);
+          const completion = await groq.chat.completions.create({
+            model: PRIMARY_MODEL,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 1200, // Increased for more comprehensive responses with real-time data
+            stop: null,
+          });
+
+          const content = completion.choices[0]?.message?.content;
+          const executedTools = completion.choices[0]?.message?.executed_tools;
+
+          if (executedTools && executedTools.length > 0) {
+            console.log(`Tool calls used: ${executedTools.length}`);
+          }
+
+          if (content && content.length > 100) {
+            return content;
+          } else {
+            throw new Error("Generated content was too short or empty");
+          }
+        } catch (error) {
+          lastError = error as GroqApiError;
+
+          // Don't retry for non-server errors or if we've exhausted retries
+          if (
+            attempt >= MAX_RETRIES ||
+            !(
+              lastError.status === 503 ||
+              lastError.status === 500 ||
+              (lastError.message &&
+                lastError.message.includes("Service Unavailable"))
+            )
+          ) {
+            break;
+          }
+        }
       }
 
-      if (content && content.length > 100) {
-        return content;
-      } else {
-        throw new Error("Generated content was too short or empty");
-      }
+      // If we got here, all retries failed
+      throw lastError;
     } catch (primaryModelError) {
+      const typedError = primaryModelError as GroqApiError;
+      // Log with more detailed error information
       console.warn(
         `Compound-beta model error, falling back to ${SECONDARY_MODEL}:`,
-        primaryModelError
+        typedError.status || typedError.message || typedError
       );
 
       // Fall back to standard model
@@ -147,9 +207,10 @@ export const generateItinerary = async (answers: string[]): Promise<string> => {
           );
         }
       } catch (secondaryModelError) {
+        const typedError = secondaryModelError as GroqApiError;
         console.warn(
           `Secondary model error, falling back to ${FALLBACK_MODEL}:`,
-          secondaryModelError
+          typedError.status || typedError.message || typedError
         );
 
         // Final fallback
@@ -175,11 +236,22 @@ export const generateItinerary = async (answers: string[]): Promise<string> => {
       }
     }
   } catch (error) {
-    console.error("Error generating itinerary:", error);
+    const typedError = error as GroqApiError;
+    console.error("Error generating itinerary:", typedError);
     // Provide more user-friendly error message
-    if (error instanceof Error && error.message.includes("status code 429")) {
+    if (
+      typedError.status === 429 ||
+      (typedError.message && typedError.message.includes("status code 429"))
+    ) {
       throw new Error(
         "Our travel planning service is currently busy. Please try again in a minute."
+      );
+    } else if (
+      typedError.status === 503 ||
+      (typedError.message && typedError.message.includes("Service Unavailable"))
+    ) {
+      throw new Error(
+        "Our travel planning service is temporarily unavailable. Please try again in a few minutes."
       );
     } else {
       throw new Error(
@@ -208,46 +280,121 @@ export const generateItineraryStream = async (
       console.log(
         "Using compound-beta model for streaming (note: tool calls may affect streaming performance)"
       );
-      const stream = await groq.chat.completions.create({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 1200,
-        stop: null,
-        stream: true,
-      });
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        fullResponse += content;
-        onChunk(content);
+      // Add retry logic for streaming
+      let lastError: GroqStreamError | null = null;
+      let streamSuccess = false;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(
+              `Retry attempt ${attempt} for streaming after delay...`
+            );
+            await sleep(RETRY_DELAY_MS * attempt); // Exponential backoff
+          }
+
+          const stream = await groq.chat.completions.create({
+            model: model,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 1200,
+            stop: null,
+            stream: true,
+          });
+
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            fullResponse += content;
+            onChunk(content);
+          }
+
+          streamSuccess = true;
+          onComplete(fullResponse);
+          return fullResponse;
+        } catch (error) {
+          lastError = error as GroqStreamError;
+
+          // Don't retry for non-server errors or if we've exhausted retries
+          if (
+            attempt >= MAX_RETRIES ||
+            !(
+              lastError.status === 503 ||
+              lastError.status === 500 ||
+              (lastError.message &&
+                lastError.message.includes("Service Unavailable"))
+            )
+          ) {
+            break;
+          }
+        }
       }
 
-      onComplete(fullResponse);
-      return fullResponse;
+      // If we attempted streaming but failed all retries
+      if (!streamSuccess) {
+        throw lastError;
+      }
     } catch (streamError) {
+      const typedStreamError = streamError as GroqStreamError;
       console.warn(
         `Stream error with ${model}, falling back to non-streaming:`,
-        streamError
+        typedStreamError.status || typedStreamError.message || typedStreamError
       );
 
       // Try non-streaming with primary model first
       try {
-        const completion = await groq.chat.completions.create({
-          model: PRIMARY_MODEL,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: 1200,
-          stop: null,
-        });
+        // Try with retry logic for primary model
+        let primarySuccess = false;
+        let primaryLastError: GroqApiError | null = null;
 
-        const content = completion.choices[0]?.message?.content || "";
-        onComplete(content);
-        return content;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            if (attempt > 0) {
+              console.log(
+                `Retry attempt ${attempt} for primary non-streaming after delay...`
+              );
+              await sleep(RETRY_DELAY_MS * attempt);
+            }
+
+            const completion = await groq.chat.completions.create({
+              model: PRIMARY_MODEL,
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.7,
+              max_tokens: 1200,
+              stop: null,
+            });
+
+            const content = completion.choices[0]?.message?.content || "";
+            primarySuccess = true;
+            onComplete(content);
+            return content;
+          } catch (error) {
+            primaryLastError = error as GroqApiError;
+
+            if (
+              attempt >= MAX_RETRIES ||
+              !(
+                primaryLastError.status === 503 ||
+                primaryLastError.status === 500 ||
+                (primaryLastError.message &&
+                  primaryLastError.message.includes("Service Unavailable"))
+              )
+            ) {
+              break;
+            }
+          }
+        }
+
+        if (!primarySuccess) {
+          throw primaryLastError;
+        }
       } catch (primaryError) {
+        const typedPrimaryError = primaryError as GroqApiError;
         console.warn(
           `Error with primary model, falling back to ${SECONDARY_MODEL}:`,
-          primaryError
+          typedPrimaryError.status ||
+            typedPrimaryError.message ||
+            typedPrimaryError
         );
 
         // Try secondary model
@@ -273,9 +420,12 @@ export const generateItineraryStream = async (
           return content;
         } catch (secondaryError) {
           // Fall back to final option
+          const typedSecondaryError = secondaryError as GroqApiError;
           console.warn(
             `Secondary model failed, using final fallback:`,
-            secondaryError
+            typedSecondaryError.status ||
+              typedSecondaryError.message ||
+              typedSecondaryError
           );
           model = FALLBACK_MODEL;
           const fallbackCompletion = await groq.chat.completions.create({
@@ -302,11 +452,16 @@ export const generateItineraryStream = async (
       }
     }
   } catch (error) {
-    console.error("Error generating itinerary stream:", error);
+    const typedError = error as GroqApiError;
+    console.error("Error generating itinerary stream:", typedError);
     const errorMessage =
-      error instanceof Error
-        ? "We couldn't create your itinerary at this time. Please try again later."
-        : "An unexpected error occurred while creating your itinerary.";
+      typedError.status === 503 ||
+      (typedError.message && typedError.message.includes("Service Unavailable"))
+        ? "Our travel planning service is temporarily unavailable. Please try again in a few minutes."
+        : typedError.status === 429 ||
+          (typedError.message && typedError.message.includes("status code 429"))
+        ? "Our travel planning service is currently busy. Please try again in a minute."
+        : "We couldn't create your itinerary at this time. Please try again later.";
 
     onComplete(errorMessage);
     throw new Error(errorMessage);

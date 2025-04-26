@@ -1,5 +1,4 @@
 import { jsPDF } from "jspdf";
-import { enhanceSearchWithVision } from "./groq-vision-service";
 
 // Types for PDF generation
 export interface PdfOptions {
@@ -393,8 +392,7 @@ interface UnsplashPhoto {
 
 export const searchImages = async (
   query: string,
-  destination: string,
-  referenceImageUrl?: string
+  destination: string
 ): Promise<UnsplashImage[]> => {
   try {
     // Get Access Key from environment variables
@@ -405,27 +403,7 @@ export const searchImages = async (
     }
 
     const enhancedQuery = createOptimizedQuery(query, destination);
-    let additionalQueries: string[] = [];
-
-    // Use Groq Vision to enhance search if a reference image is provided
-    if (referenceImageUrl && process.env.GROQ_API_KEY) {
-      try {
-        console.log("Using Groq Vision to enhance image search...");
-
-        const visionSearchTerms = await enhanceSearchWithVision(
-          referenceImageUrl,
-          destination
-        );
-
-        if (visionSearchTerms && visionSearchTerms.length > 0) {
-          additionalQueries = visionSearchTerms;
-          console.log("Vision-enhanced search terms:", additionalQueries);
-        }
-      } catch (visionError) {
-        console.error("Error using Vision enhancement:", visionError);
-        // Continue with standard search if vision enhancement fails
-      }
-    }
+    console.log(`Searching images with query: ${enhancedQuery}`);
 
     // Set a timeout for the API request
     const controller = new AbortController();
@@ -439,7 +417,7 @@ export const searchImages = async (
       const response = await fetch(
         `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
           enhancedQuery
-        )}&per_page=8&orientation=landscape&content_filter=high&client_id=${accessKey}`,
+        )}&per_page=15&orientation=landscape&content_filter=high&client_id=${accessKey}`,
         { signal: controller.signal }
       );
 
@@ -464,6 +442,7 @@ export const searchImages = async (
           } else if (/tour|adventure|excursion|activity/i.test(q)) {
             return "Activities & Experiences";
           } else {
+            // Make sure we properly categorize images with the destination name
             return destination ? `Places in ${destination}` : "Destinations";
           }
         };
@@ -472,7 +451,7 @@ export const searchImages = async (
         const standardResults = data.results.map((photo: UnsplashPhoto) => ({
           url: photo.urls.regular,
           thumb: photo.urls.thumb,
-          alt: photo.alt_description || `${destination} ${query}`.trim(),
+          alt: photo.alt_description || `${destination} travel destination`,
           credit: `Photo by ${photo.user.name} on Unsplash`,
           category: getCategoryFromQuery(query),
         }));
@@ -480,58 +459,11 @@ export const searchImages = async (
         allResults = [...standardResults];
       }
 
-      // If we have additional queries from vision analysis, search for each one
-      if (additionalQueries.length > 0) {
-        // Only get 1-2 results per vision-enhanced query to avoid rate limiting
-        const resultsPerQuery = Math.floor(8 / additionalQueries.length);
-
-        // Use Promise.all to make parallel requests for each vision-enhanced query
-        const visionSearchPromises = additionalQueries
-          .slice(0, 4)
-          .map(async (visionQuery) => {
-            try {
-              const visionResponse = await fetch(
-                `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
-                  visionQuery
-                )}&per_page=${resultsPerQuery}&orientation=landscape&content_filter=high&client_id=${accessKey}`
-              );
-
-              if (!visionResponse.ok) return [];
-
-              const visionData = await visionResponse.json();
-
-              if (!visionData.results || visionData.results.length === 0)
-                return [];
-
-              return visionData.results.map((photo: UnsplashPhoto) => ({
-                url: photo.urls.regular,
-                thumb: photo.urls.thumb,
-                alt: photo.alt_description || visionQuery,
-                credit: `Photo by ${photo.user.name} on Unsplash`,
-                category: "Vision-enhanced Results",
-              }));
-            } catch (error) {
-              console.error(
-                `Error fetching vision query "${visionQuery}":`,
-                error
-              );
-              return [];
-            }
-          });
-
-        // Wait for all vision-enhanced queries to complete
-        const visionResults = await Promise.all(visionSearchPromises);
-
-        // Flatten the results and add to allResults
-        const flattenedVisionResults = visionResults.flat();
-        allResults = [...allResults, ...flattenedVisionResults];
-      }
-
       clearTimeout(timeoutId);
 
       // If we got no results at all, use fallbacks
       if (allResults.length === 0) {
-        console.log("No images found, using fallbacks");
+        console.log(`No images found for ${destination}, using fallbacks`);
         return FALLBACK_IMAGES;
       }
 
@@ -546,7 +478,10 @@ export const searchImages = async (
       return uniqueResults;
     } catch (fetchError) {
       clearTimeout(timeoutId);
-      console.error("Fetch error during image search:", fetchError);
+      console.error(
+        `Fetch error during image search for ${destination}:`,
+        fetchError
+      );
       // If it's an abort error (timeout) or other fetch error, use fallbacks
       return FALLBACK_IMAGES;
     }
