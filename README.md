@@ -65,12 +65,12 @@ Our application streamlines the travel planning process by asking users simple q
 
 ---
 
-<!-- ## 📽️ Demo & Deliverables
+## 📽️ Demo & Deliverables
 
-- **Demo Video Link:** [Watch TravelHub Demo](https://youtu.be/travelhub-demo)
-- **Pitch Deck Link:** [View Presentation](https://docs.google.com/presentation/d/travelhub-pitch)
+- **Demo Video Link:** [Watch TravelHub Demo](https://drive.google.com/drive/folders/1DYfQhKvkBqwrlRrLUZXK54FgHopIYP2_?usp=drive_link)
+- **Pitch Deck Link:** [View Presentation](https://drive.google.com/drive/folders/1DYfQhKvkBqwrlRrLUZXK54FgHopIYP2_?usp=drive_link)
 
---- -->
+---
 
 ## ✅ Tasks & Bonus Checklist
 
