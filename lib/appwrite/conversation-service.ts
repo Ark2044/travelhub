@@ -20,9 +20,9 @@ export interface Message {
   id?: string;
   conversation_id: string;
   content: string;
-  is_user: boolean;
+  is_user: boolean; // We'll keep this for backwards compatibility
+  role?: string; // Adding role field to match database schema
   created_at?: Date;
-  updated_at?: Date; // Added updated_at field
 }
 
 export interface TravelPreference {
@@ -93,9 +93,8 @@ export const conversationService = {
       {
         conversation_id,
         content,
-        is_user,
+        role: is_user ? "user" : "assistant", // Set the required role field based on is_user
         created_at: now,
-        updated_at: now, // Added updated_at field
       }
     );
     return message.$id;
