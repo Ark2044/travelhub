@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -23,6 +23,7 @@ export default function LoginForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const {
     register,
@@ -47,13 +48,25 @@ export default function LoginForm() {
       });
 
       if (success) {
-        // If login is successful and we have a user with ID, redirect to user profile
-        // Otherwise go to home page
-        if (user && user.$id) {
-          router.push(`/user/${user.$id}`);
-        } else {
-          router.push("/");
+        // If login is successful, check for redirect parameter or stored redirect path
+        const redirectParam = searchParams.get("redirect");
+        const storedRedirect =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem("redirectAfterLogin")
+            : null;
+
+        let redirectPath = "/";
+
+        if (redirectParam) {
+          redirectPath = redirectParam;
+        } else if (storedRedirect) {
+          redirectPath = storedRedirect;
+          sessionStorage.removeItem("redirectAfterLogin");
+        } else if (user && user.$id) {
+          redirectPath = `/user/${user.$id}`;
         }
+
+        router.push(redirectPath);
       } else {
         setError("Login failed. Please check your credentials.");
       }

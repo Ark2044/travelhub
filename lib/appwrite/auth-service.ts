@@ -87,45 +87,28 @@ export async function signInAccount(user: LoginUserAccount) {
 
 export async function getCurrentUser() {
   try {
-    // Check if we're in a browser environment before attempting to get the account
-    if (typeof window === "undefined") {
-      console.log("Not in browser environment, skipping auth check");
+    // First verify if we have an active session
+    const session = await account.getSession("current");
+
+    if (!session) {
       return null;
     }
 
-    // Try to get the current account with retry logic
-    let attempts = 0;
-    const maxAttempts = 2;
-    let currentAccount = null;
-
-    while (attempts < maxAttempts && !currentAccount) {
-      try {
-        currentAccount = await account.get();
-        break;
-      } catch (retryError) {
-        attempts++;
-        if (attempts < maxAttempts) {
-          console.log(`Retrying account fetch, attempt ${attempts}`);
-          await new Promise((resolve) => setTimeout(resolve, 300));
-        } else {
-          throw retryError;
-        }
-      }
-    }
+    // If session exists, get the user account
+    const currentAccount = await account.get();
 
     if (!currentAccount) {
-      console.log("No account found after attempts");
       return null;
     }
 
     return currentAccount;
   } catch (error) {
-    // Check specifically for authentication errors
     if (
       error instanceof Error &&
       (error.message.includes("Missing credentials") ||
         error.message.includes("Invalid credentials") ||
-        error.message.includes("missing scope"))
+        error.message.includes("missing scope") ||
+        error.message.includes("Session not found"))
     ) {
       console.log(
         "Authentication error: User not logged in or session expired"

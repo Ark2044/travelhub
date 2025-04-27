@@ -9,7 +9,9 @@ export function cn(...inputs: ClassValue[]) {
  * Creates a consistent storage configuration for Zustand persist middleware
  * @param trimFunction Optional function to trim data when storage is getting large
  */
-export const createPersistStorage = (trimFunction?: (data: unknown) => unknown) => {
+export const createPersistStorage = (
+  trimFunction?: (data: unknown) => unknown
+) => {
   return {
     getItem: (name: string) => {
       try {
@@ -98,12 +100,25 @@ export const createPersistStorage = (trimFunction?: (data: unknown) => unknown) 
 export function syncToCookies(name: string, value: unknown) {
   if (typeof window === "undefined") return;
 
-  // Set cookie expiration to 7 days
-  const expirationDate = new Date();
-  expirationDate.setDate(expirationDate.getDate() + 7);
+  try {
+    // Set cookie expiration to 7 days
+    const expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 7);
 
-  // Set the cookie with the authentication state
-  document.cookie = `${name}=${encodeURIComponent(
-    JSON.stringify(value)
-  )}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+    // Stringify the value with proper error handling
+    const stringifiedValue = JSON.stringify(value);
+
+    // Set the cookie with the authentication state
+    document.cookie = `${name}=${encodeURIComponent(
+      stringifiedValue
+    )}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+
+    // Also update localStorage for redundancy
+    localStorage.setItem(name, stringifiedValue);
+
+    return true;
+  } catch (error) {
+    console.error("Error syncing to cookies:", error);
+    return false;
+  }
 }

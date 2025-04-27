@@ -21,6 +21,7 @@ const alwaysAccessibleRoutes = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const url = request.nextUrl.clone();
 
   // Skip middleware for non-page routes (static files, etc.)
   if (
@@ -43,15 +44,22 @@ export function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith("/api/")
   );
 
-  // Get the authentication state
+  // Get the authentication state from cookie
   const authStore = request.cookies.get("auth-storage")?.value;
   let isAuthenticated = false;
+  let userId = "";
 
   if (authStore) {
     try {
       const parsedAuthStore = JSON.parse(decodeURIComponent(authStore));
       isAuthenticated =
-        parsedAuthStore.state && parsedAuthStore.state.isAuthenticated === true;
+        parsedAuthStore.state &&
+        parsedAuthStore.state.isAuthenticated === true &&
+        parsedAuthStore.state.user &&
+        parsedAuthStore.state.user.$id;
+
+      // Extract userId for profile redirection
+      userId = parsedAuthStore.state?.user?.$id || "";
     } catch (e) {
       console.error("Error parsing auth store:", e);
     }
@@ -62,9 +70,16 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // If trying to access a protected route while not authenticated, redirect to login
+  // If trying to access a protected route while not authenticated, redirect to login with return URL
   if (!isPublicRoute && !isAlwaysAccessible && !isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    url.pathname = "/login";
+    url.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Special handling for /profile path - redirect to user's profile page
+  if (pathname === "/profile" && isAuthenticated && userId) {
+    return NextResponse.redirect(new URL(`/user/${userId}`, request.url));
   }
 
   return NextResponse.next();

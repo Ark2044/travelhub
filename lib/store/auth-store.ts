@@ -13,7 +13,7 @@ import {
   CreateUserAccount,
   LoginUserAccount,
 } from "../appwrite/auth-service";
-import { createPersistStorage } from "../utils";
+import { createPersistStorage, syncToCookies } from "../utils";
 
 interface AuthState {
   user: Models.User<Models.Preferences> | null;
@@ -47,6 +47,9 @@ export const useAuthStore = create<AuthState>()(
             state.isLoading = true;
           });
 
+          // First clear any previous errors
+          console.log("Checking auth status...");
+
           const currentAccount = await getCurrentUser();
 
           if (currentAccount) {
@@ -55,19 +58,44 @@ export const useAuthStore = create<AuthState>()(
               state.isAuthenticated = true;
               state.isLoading = false;
             });
+
+            // Synchronize auth state to cookies for SSR/middleware
+            syncToCookies("auth-storage", {
+              state: {
+                user: currentAccount,
+                isAuthenticated: true,
+              },
+            });
+
             return true;
           }
 
+          // If we reach here, user is not authenticated
           set((state) => {
+            state.user = null;
+            state.isAuthenticated = false;
             state.isLoading = false;
           });
+
+          // Clear cookies if not authenticated
+          document.cookie =
+            "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
           return false;
         } catch (error) {
           console.error("Error checking auth status:", error);
+
+          // Reset to unauthenticated state
           set((state) => {
+            state.user = null;
+            state.isAuthenticated = false;
             state.isLoading = false;
           });
+
+          // Clear cookies
+          document.cookie =
+            "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
           return false;
         }
       },
@@ -91,12 +119,23 @@ export const useAuthStore = create<AuthState>()(
                 state.isAuthenticated = true;
                 state.isLoading = false;
               });
+
+              // Synchronize auth state to cookies for SSR/middleware
+              syncToCookies("auth-storage", {
+                state: {
+                  user: currentUser,
+                  isAuthenticated: true,
+                },
+              });
+
               return true;
             }
           }
 
           set((state) => {
             state.isLoading = false;
+            state.isAuthenticated = false;
+            state.user = null;
           });
 
           return false;
@@ -104,8 +143,10 @@ export const useAuthStore = create<AuthState>()(
           console.error("Login error:", error);
           set((state) => {
             state.isLoading = false;
+            state.isAuthenticated = false;
+            state.user = null;
           });
-          return false;
+          throw error; // Re-throw for component handling
         }
       },
 
@@ -128,6 +169,15 @@ export const useAuthStore = create<AuthState>()(
                 state.isAuthenticated = true;
                 state.isLoading = false;
               });
+
+              // Synchronize auth state to cookies for SSR/middleware
+              syncToCookies("auth-storage", {
+                state: {
+                  user: currentUser,
+                  isAuthenticated: true,
+                },
+              });
+
               return true;
             }
           }
@@ -154,19 +204,39 @@ export const useAuthStore = create<AuthState>()(
 
           await signOutAccount();
 
+          // Clear state
           set((state) => {
             state.user = null;
             state.isAuthenticated = false;
             state.isLoading = false;
           });
 
+          // Clear cookies
+          document.cookie =
+            "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+          // Clear localStorage
+          localStorage.removeItem("auth-storage");
+
           return true;
         } catch (error) {
           console.error("Logout error:", error);
+
+          // Even if there's an error, we'll clear the state and cookies
           set((state) => {
+            state.user = null;
+            state.isAuthenticated = false;
             state.isLoading = false;
           });
-          return false;
+
+          // Clear cookies
+          document.cookie =
+            "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+          // Clear localStorage
+          localStorage.removeItem("auth-storage");
+
+          return true; // Return true anyway since we've cleaned up client-side state
         }
       },
 

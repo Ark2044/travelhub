@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { syncToCookies } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function AuthInitializer({
@@ -37,38 +38,49 @@ export default function AuthInitializer({
             "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         } else if (isAuthenticated && currentUser) {
           // Ensure the auth cookie is updated with the latest state
-          const expirationDate = new Date();
-          expirationDate.setDate(expirationDate.getDate() + 7);
-
-          const authData = JSON.stringify({
+          syncToCookies("auth-storage", {
             state: {
               user: currentUser,
               isAuthenticated: true,
             },
           });
 
-          // Set both localStorage and cookie for redundancy
-          localStorage.setItem("auth-storage", authData);
-
-          document.cookie = `auth-storage=${encodeURIComponent(
-            authData
-          )}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
-
           console.log("Auth cookie refreshed for user:", currentUser.$id);
         }
       } catch (error) {
         console.error("Auth initialization error:", error);
+
+        // Reset auth state if there's an error
+        localStorage.removeItem("auth-storage");
+        document.cookie =
+          "auth-storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       } finally {
         setAuthChecked(true);
       }
     };
 
     initializeAuth();
+
+    // Set up interval to periodically check authentication status
+    const authCheckInterval = setInterval(() => {
+      // Only silently check (don't show toast errors for routine checks)
+      checkAuthStatus().catch((error) => {
+        console.error("Auth check interval error:", error);
+      });
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => {
+      clearInterval(authCheckInterval);
+    };
   }, [checkAuthStatus]);
 
   // Only render children when authentication check is complete
   if (!authChecked) {
-    return <div>Checking authentication status...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse">Checking authentication status...</div>
+      </div>
+    );
   }
 
   return <>{children}</>;
